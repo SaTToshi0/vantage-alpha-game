@@ -5,24 +5,35 @@ import { useGameStore } from '../store/useGameStore';
 import { Mic, MicOff, Wifi } from 'lucide-react';
 import * as THREE from 'three';
 
-export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false }) => {
+export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false, isLocal = true }) => {
   const screenRef = useRef();
   const [video, setVideo] = useState(null);
 
   // Attach stream to a native HTMLVideoElement for WebGL Texture mapping
   useEffect(() => {
+    let vid;
     if (stream) {
-      const vid = document.createElement('video');
+      vid = document.createElement('video');
       vid.srcObject = stream;
       vid.crossOrigin = 'Anonymous';
       vid.playsInline = true;
-      vid.muted = true;
+      vid.muted = isLocal; // Le joueur local est muet pour éviter l'écho, mais on entend le joueur distant
       vid.play().catch(e => console.error("GiantScreen video play err:", e));
       setVideo(vid);
     } else {
       setVideo(null);
     }
-  }, [stream]);
+
+    // Cleanup crucial pour éviter les fuites de mémoire et le lag
+    return () => {
+      if (vid) {
+        vid.pause();
+        vid.srcObject = null;
+        vid.removeAttribute('src');
+        vid.load();
+      }
+    };
+  }, [stream, isLocal]);
 
   useFrame(({ clock }) => {
     if (screenRef.current) {

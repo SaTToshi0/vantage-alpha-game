@@ -127,6 +127,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ─── WebRTC Signaling ───
+  socket.on('signal', (data) => {
+    // Relais du signal WebRTC (Offer, Answer, ICE Candidate) au joueur cible
+    if (data.target) {
+      io.to(data.target).emit('signal', {
+        sender: socket.id,
+        sdp: data.sdp,
+        candidate: data.candidate
+      });
+    }
+  });
+
   // ─── Déconnexion ───
   socket.on('disconnect', () => {
     console.log('❌ Player disconnected:', socket.id);

@@ -19,6 +19,7 @@ const ScreenManager = () => {
   if (localPlayer?.cameraEnabled && localStream) {
     activeScreens.push({
       id: 'local',
+      isLocal: true,
       player: localPlayer,
       stream: localStream,
       color: '#a8ff3e', // Vert pour le joueur local
@@ -30,6 +31,7 @@ const ScreenManager = () => {
     if (p.cameraEnabled && remoteStreams[p.id]) {
       activeScreens.push({
         id: p.id,
+        isLocal: false,
         player: p,
         stream: remoteStreams[p.id],
         color: '#ff00ff', // Rose pour les joueurs distants
@@ -58,6 +60,7 @@ const ScreenManager = () => {
           scale={screenScale}
           color={activeScreens[0].color}
           mirrored={activeScreens[0].mirrored}
+          isLocal={activeScreens[0].isLocal}
         />
         <GiantScreen 
           key={activeScreens[1].id}
@@ -68,6 +71,7 @@ const ScreenManager = () => {
           scale={screenScale}
           color={activeScreens[1].color}
           mirrored={activeScreens[1].mirrored}
+          isLocal={activeScreens[1].isLocal}
         />
       </group>
     );
@@ -93,6 +97,7 @@ const ScreenManager = () => {
             scale={screenScale}
             color={screenData.color}
             mirrored={screenData.mirrored}
+            isLocal={screenData.isLocal}
           />
         );
       })}
@@ -189,9 +194,8 @@ export const World = () => {
 
   return (
     <>
-      <BakeShadows />
       <Sky sunPosition={[100, 10, 100]} inclination={0} azimuth={0.25} />
-      <Stars radius={100} depth={50} count={4000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={1} />
       <Environment preset="night" />
 
       <ambientLight intensity={0.6} />
@@ -200,23 +204,23 @@ export const World = () => {
 
       <Grid
         infiniteGrid
-        fadeDistance={80}
-        fadeStrength={5}
+        fadeDistance={150}
+        fadeStrength={2}
         cellSize={1}
         sectionSize={10}
-        sectionColor="#333"
-        cellColor="#1a1a1a"
+        sectionColor="#00d8ff" // Cyberpunk Cyan
+        cellColor="#9b59b6" // Deep Violet
         position={[0, 0.01, 0]}
       />
 
       <mesh ref={groundRef} receiveShadow frustumCulled={false}>
         <planeGeometry args={[300, 300]} />
-        <meshStandardMaterial color="#1a1f3c" roughness={0.8} metalness={0.2} />
+        <meshStandardMaterial color="#020205" roughness={0.9} metalness={0.1} />
       </mesh>
 
       <LandingBase />
       <ScreenManager />
-      <MedievalScenery />
+      {/* <MedievalScenery /> Désactivé pour le style Cyberpunk et pour réduire drastiquement le lag (moins de lumières) */}
     </>
   );
 };
