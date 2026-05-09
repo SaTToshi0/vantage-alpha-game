@@ -1,0 +1,122 @@
+/**
+ * ========================================
+ * CONFIG.JS - Configuration Centralisée
+ * ========================================
+ * 
+ * Tous les paramètres importants du jeu
+ * en un seul endroit pour faciliter les ajustements.
+ */
+
+export const GAME_PROFILES = {
+  ARCADE: 'arcade',
+  REALISTIC: 'realistic',
+  EXPLORATION: 'exploration',
+  MOBILE: 'mobile',
+};
+
+export const PLAYER_CONFIG = {
+  WALK_SPEED: 8,
+  SPRINT_SPEED: 15,
+  ROTATION_SPEED: 0.1,
+  JUMP_FORCE: 8,
+  JUMP_THRESHOLD: 0.01,
+  DOUBLE_JUMP_ENABLED: false,
+  LINEAR_DAMPING: 0.3,
+  ANGULAR_DAMPING: 0.99,
+  MASS: 1,
+  RADIUS: 0.5,
+  ACCELERATION: 0.15,
+  BODY_COLOR: '#3498db',
+  BODY_EMISSIVE_INTENSITY: 1.5,
+  RING_COLOR: '#3498db',
+  RING_EMISSIVE_INTENSITY: 4,
+  FORWARD_INDICATOR_COLOR: '#fff',
+};
+
+export const CAMERA_CONFIG = {
+  DISTANCE: 6,
+  HEIGHT: 2.5,
+  LOOK_AHEAD_HEIGHT: 0.5,
+  POSITION_LERP: 0.12, // Légèrement augmenté pour plus de réactivité
+  ROTATION_LERP: 0.1,
+  MIN_HEIGHT_ABOVE_GROUND: 0.5,
+  FOV: 75,
+  NEAR_CLIP: 0.1,
+  FAR_CLIP: 1000,
+  MOUSE_SENSITIVITY: 0.002,
+};
+
+export const NETWORK_CONFIG = {
+  EMIT_INTERVAL: 0.05,
+  POSITION_DECIMALS: 2,
+  ROTATION_DECIMALS: 3,
+  POSITION_LERP: 0.15,
+  ROTATION_LERP: 0.1,
+  RECONNECT_ENABLED: true,
+  RECONNECT_DELAY: 1000,
+  RECONNECT_DELAY_MAX: 5000,
+  RECONNECT_ATTEMPTS: 5,
+  SERVER_URL: import.meta.env.VITE_SERVER_URL || 'http://localhost:3001',
+};
+
+export const PHYSICS_CONFIG = {
+  GRAVITY: [0, -9.82, 0],
+  LINEAR_DAMPING: 0.3,
+  ANGULAR_DAMPING: 0.99,
+  DEFAULT_COLLISION_RESPONSE: 1,
+  FRICTION: 0.4,
+};
+
+export const WORLD_CONFIG = {
+  WORLD_SIZE: 200,
+  GROUND_Y: 0,
+  AMBIENT_LIGHT_INTENSITY: 0.3,
+  SHADOW_MAP_SIZE: 512,
+  SHADOW_RADIUS: 4,
+  STARS_RADIUS: 100,
+  STARS_COUNT: 2000,
+  STARS_DEPTH: 50,
+  STARS_FACTOR: 4,
+  GRID_CELL_SIZE: 1,
+  GRID_SECTION_SIZE: 10,
+  GRID_FADE_DISTANCE: 80,
+  GRID_FADE_STRENGTH: 5,
+};
+
+export const RENDER_CONFIG = {
+  ANTIALIAS: true,
+  POWER_PREFERENCE: 'high-performance',
+  PRECISION: 'mediump',
+  DPR: Math.min(window.devicePixelRatio, 2),
+  MIN_FRAME_RATE: 0.5,
+  MAX_FRAME_RATE: 1.0,
+  LOD_NEAR_DISTANCE: 50,
+  LOD_FAR_DISTANCE: 80,
+  LOD_VERY_FAR_DISTANCE: 150,
+};
+
+export const REMOTE_PLAYER_CONFIG = {
+  BODY_COLOR: '#e74c3c',
+  BODY_EMISSIVE_INTENSITY: 1.5,
+  RING_COLOR: '#e74c3c',
+  RING_EMISSIVE_INTENSITY: 4,
+  INDICATOR_COLOR: '#ffd700',
+  HIGH_QUALITY_SEGMENTS: 32,
+  LOW_QUALITY_SEGMENTS: 16,
+  VERY_LOW_QUALITY_SEGMENTS: 8,
+  CULL_DISTANCE: 150,
+  LOW_QUALITY_DISTANCE: 80,
+  VERY_LOW_QUALITY_DISTANCE: 120,
+};
+
+export const CONFIG = {
+  PLAYER: PLAYER_CONFIG,
+  CAMERA: CAMERA_CONFIG,
+  NETWORK: NETWORK_CONFIG,
+  PHYSICS: PHYSICS_CONFIG,
+  WORLD: WORLD_CONFIG,
+  RENDER: RENDER_CONFIG,
+  REMOTE_PLAYER: REMOTE_PLAYER_CONFIG,
+};
+
+export default CONFIG;
