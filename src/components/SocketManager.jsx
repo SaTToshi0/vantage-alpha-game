@@ -3,13 +3,14 @@ import { io } from 'socket.io-client';
 import { useGameStore } from '../store/useGameStore';
 
 let socket = null;
+const peers = {}; // id -> RTCPeerConnection
 
 export const initializeSocket = () => {
   if (!socket) {
     // En production (déployé), on se connecte à l'origine actuelle.
     // En local, on garde le port 3001 pour le serveur Node.
-    const socketUrl = window.location.hostname === 'localhost' 
-      ? 'http://localhost:3001' 
+    const socketUrl = window.location.hostname === 'localhost'
+      ? 'http://localhost:3001'
       : window.location.origin;
 
     socket = io(socketUrl, {
@@ -24,51 +25,169 @@ export const initializeSocket = () => {
 };
 
 export const SocketManager = () => {
-  const { setPlayers, updatePlayer, removePlayer, setLocalPlayerId } = useGameStore();
+  const setPlayers = useGameStore(state => state.setPlayers);
+  const updatePlayer = useGameStore(state => state.updatePlayer);
+  const removePlayer = useGameStore(state => state.removePlayer);
+  const setLocalPlayerId = useGameStore(state => state.setLocalPlayerId);
+  const localStreamInStore = useGameStore(state => state.localStream);
+  const addRemoteStream = useGameStore(state => state.addRemoteStream);
+  const removeRemoteStream = useGameStore(state => state.removeRemoteStream);
+  const setIsGameStarted = useGameStore(state => state.setIsGameStarted);
+  const setIsStarting = useGameStore(state => state.setIsStarting);
+  const setRoomCode = useGameStore(state => state.setRoomCode);
 
   useEffect(() => {
     const sock = initializeSocket();
+
+    const createPeer = (targetId, isOffer) => {
+      try {
+        if (peers[targetId]) return peers[targetId];
+
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        peers[targetId] = pc;
+
+        // Ajouter le flux local si disponible
+        if (localStreamInStore) {
+          localStreamInStore.getTracks().forEach(track => pc.addTrack(track, localStreamInStore));
+        }
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            sock.emit('signal', { target: targetId, candidate: event.candidate });
+          }
+        };
+
+        pc.ontrack = (event) => {
+          console.log('🎞️ Flux distant reçu pour:', targetId);
+          addRemoteStream(targetId, event.streams[0]);
+        };
+
+        if (isOffer) {
+          pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
+            sock.emit('signal', { target: targetId, sdp: pc.localDescription });
+          });
+        }
+
+        return pc;
+      } catch (err) {
+        console.error("Failed to create peer for", targetId, err);
+        return null;
+      }
+    };
 
     const handleConnect = () => {
       console.log('✅ Connecté au serveur:', sock.id);
       setLocalPlayerId(sock.id);
     };
 
-    const handlePlayers = (players) => setPlayers(players);
+    const handlePlayers = (players) => {
+      setPlayers(players);
+      // Vérification de sécurité : Signal Magique 999
+      Object.values(players).forEach(p => {
+        if (p.rotation && p.rotation[1] === 999) {
+          setIsStarting(true);
+          setIsGameStarted(true);
+        }
+      });
+    };
 
     const handlePlayerConnected = (player) => {
       console.log('👤 Joueur connecté:', player.id);
       updatePlayer(player.id, player);
+      // Lancer la connexion WebRTC vers le nouveau joueur
+      createPeer(player.id, true);
     };
 
-    const handlePlayerMoved = (player) => updatePlayer(player.id, player);
+    const handlePlayerMoved = (player) => {
+      updatePlayer(player.id, player);
+      if (player.rotation && player.rotation[1] === 999) {
+        setIsStarting(true);
+        setIsGameStarted(true);
+      }
+    };
+    const handlePlayerUpdated = (player) => {
+      updatePlayer(player.id, player);
+      if (player.rotation && player.rotation[1] === 999) {
+        console.log('🚀 Signal de départ reçu de:', player.id);
+        setIsStarting(true);
+        setIsGameStarted(true);
+      }
+    };
 
     const handlePlayerDisconnected = (id) => {
       console.log('👋 Joueur déconnecté:', id);
       removePlayer(id);
+      if (peers[id]) {
+        peers[id].close();
+        delete peers[id];
+      }
+      removeRemoteStream(id);
     };
 
     // room-joined : mettre à jour la liste des joueurs du salon
-    const handleRoomJoined = ({ players }) => {
-      if (players) setPlayers(players);
+    const handleRoomJoined = ({ players: roomPlayers, code }) => {
+      if (code) setRoomCode(code);
+      if (roomPlayers) {
+        setPlayers(roomPlayers);
+        // On initie la connexion avec tous les joueurs déjà présents
+        Object.keys(roomPlayers).forEach(id => {
+          if (id !== sock.id) createPeer(id, true);
+        });
+      }
     };
 
-    sock.on('connect',             handleConnect);
-    sock.on('players',             handlePlayers);
-    sock.on('playerConnected',     handlePlayerConnected);
-    sock.on('playerMoved',         handlePlayerMoved);
-    sock.on('playerDisconnected',  handlePlayerDisconnected);
-    sock.on('room-joined',         handleRoomJoined);
+    const handleGameStarted = () => {
+      console.log('🚀 Le jeu commence !');
+      setIsStarting(true);
+      setIsGameStarted(true);
+    };
+
+    const handleRoomCreated = ({ code }) => {
+      if (code) setRoomCode(code);
+    };
+
+    const handleSignal = async ({ sender, sdp, candidate }) => {
+      let pc = peers[sender];
+      if (!pc) pc = createPeer(sender, false);
+
+      if (sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        if (sdp.type === 'offer') {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          sock.emit('signal', { target: sender, sdp: pc.localDescription });
+        }
+      } else if (candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    };
+
+    sock.on('connect', handleConnect);
+    sock.on('players', handlePlayers);
+    sock.on('playerConnected', handlePlayerConnected);
+    sock.on('playerMoved', handlePlayerMoved);
+    sock.on('playerUpdated', handlePlayerUpdated);
+    sock.on('playerDisconnected', handlePlayerDisconnected);
+    sock.on('room-joined', handleRoomJoined);
+    sock.on('room-created', handleRoomCreated);
+    sock.on('signal', handleSignal);
+    sock.on('game-started', handleGameStarted);
 
     return () => {
-      sock.off('connect',            handleConnect);
-      sock.off('players',            handlePlayers);
-      sock.off('playerConnected',    handlePlayerConnected);
-      sock.off('playerMoved',        handlePlayerMoved);
+      sock.off('connect', handleConnect);
+      sock.off('players', handlePlayers);
+      sock.off('playerConnected', handlePlayerConnected);
+      sock.off('playerMoved', handlePlayerMoved);
       sock.off('playerDisconnected', handlePlayerDisconnected);
-      sock.off('room-joined',        handleRoomJoined);
+      sock.off('room-joined', handleRoomJoined);
+      sock.off('room-created', handleRoomCreated);
+      sock.off('signal', handleSignal);
+      sock.off('game-started', handleGameStarted);
     };
-  }, [setPlayers, updatePlayer, removePlayer, setLocalPlayerId]);
+  }, [setPlayers, updatePlayer, removePlayer, setLocalPlayerId, localStreamInStore, addRemoteStream, removeRemoteStream, setIsGameStarted, setIsStarting, setRoomCode]);
 
   return null;
 };

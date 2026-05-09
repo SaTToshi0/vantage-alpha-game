@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VANTAGE ALPHA - Waiting Room Isometric</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --green: #a8ff3e;
+            --pink: #ff00ff;
+            --dark: #05050a;
+            --font: 'Press Start 2P', cursive;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: var(--dark);
+            overflow: hidden;
+            color: #fff;
+            font-family: var(--font);
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw; height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            background: #0a0a15;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+        }
+
+        .glass-panel {
+            background: rgba(0, 10, 0, 0.85);
+            border: 2px solid var(--green);
+            backdrop-filter: blur(8px);
+            padding: 20px;
+            pointer-events: auto;
+            box-shadow: 0 0 20px rgba(168, 255, 62, 0.2);
+        }
+
+        .top-info {
+            display: flex; justify-content: space-between;
+            font-size: 10px; color: var(--green);
+        }
+
+        .player-list {
+            position: absolute;
+            top: 100px; right: 40px;
+            width: 250px;
+        }
+
+        .player-item {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 12px; font-size: 8px;
+        }
+
+        .player-status {
+            width: 8px; height: 8px;
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 40px; left: 40px;
+            font-size: 8px; color: rgba(255,255,255,0.5);
+        }
+
+        button {
+            background: var(--green);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-family: var(--font);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px var(--green);
+        }
+
+        .ready-btn-container {
+            position: absolute;
+            bottom: 40px; right: 40px;
+        }
+
+        /* Animations */
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scanlines {
+            position: absolute; inset: 0;
+            background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="lobbyCanvas"></canvas>
+    
+    <div class="scanlines"></div>
+
+    <div id="ui-layer">
+        <div class="top-info glass-panel">
+            <span>SALON D'ATTENTE // ESCOUADE #<span id="room-id">VANTAGE-7</span></span>
+            <span id="player-count">2 JOUEURS CONNECTÉS</span>
+        </div>
+
+        <div class="player-list glass-panel">
+            <div style="font-size: 10px; margin-bottom: 20px; color: var(--green); border-bottom: 1px solid #333; padding-bottom: 10px;">LISTE DES JOUEURS</div>
+            <div id="players-container">
+                <div class="player-item">
+                    <div class="player-status"></div>
+                    <span>HÔTE : SaTToshi0</span>
+                </div>
+                <div class="player-item">
+                    <div class="player-status" style="background: var(--pink); box-shadow: 0 0 10px var(--pink);"></div>
+                    <span>INVITÉ : Ami_Pro</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-hint">
+            ZQSD OU FLÈCHES POUR SE DÉPLACER<br><br>
+            LE JEU DÉMARRE QUAND L'HÔTE LANCE
+        </div>
+
+        <div class="ready-btn-container">
+            <button id="readyBtn">LANCER LA PARTIE</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * MOTEUR ISOMÉTRIQUE - VANTAGE ALPHA
+     * Inspiré par moonbench/isometric-rpg
+     */
+
+    const canvas = document.getElementById('lobbyCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Configuration
+    const TILE_W = 64;
+    const TILE_H = 32;
+    const MAP_SIZE = 10;
+    
+    let width, height;
+    function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Player State
+    const player = {
+        gridX: 4,
+        gridY: 4,
+        screenX: 0,
+        screenY: 0,
+        color: '#a8ff3e',
+        speed: 0.05
+    };
+
+    const otherPlayers = [
+        { gridX: 6, gridY: 3, color: '#ff00ff', name: 'Ami_Pro' }
+    ];
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    // Coordinate Transformation
+    function gridToScreen(gx, gy) {
+        return {
+            x: (gx - gy) * (TILE_W / 2) + width / 2,
+            y: (gx + gy) * (TILE_H / 2) + height / 2 - (MAP_SIZE * TILE_H / 2)
+        };
+    }
+
+    function drawTile(gx, gy, color = '#1a1a2e') {
+        const pos = gridToScreen(gx, gy);
+        
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        ctx.lineTo(pos.x + TILE_W / 2, pos.y + TILE_H / 2);
+        ctx.lineTo(pos.x, pos.y + TILE_H);
+        ctx.lineTo(pos.x - TILE_W / 2, pos.y + TILE_H / 2);
+        ctx.closePath();
+        
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#2a2a4e';
+        ctx.stroke();
+
+        // Ajout d'un petit reflet néon
+        if (Math.random() > 0.99) {
+            ctx.fillStyle = 'rgba(168, 255, 62, 0.1)';
+            ctx.fill();
+        }
+    }
+
+    function drawCharacter(gx, gy, color, isLocal = false) {
+        const pos = gridToScreen(gx, gy);
+        const floatY = Math.sin(Date.now() / 200) * 5;
+
+        // Ombre
+        ctx.beginPath();
+        ctx.ellipse(pos.x, pos.y + TILE_H, 15, 8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fill();
+
+        // Corps Pixel Art (Simple Bloc Stylisé)
+        ctx.fillStyle = color;
+        const charH = 40;
+        const charW = 20;
+        
+        // Base
+        ctx.fillRect(pos.x - charW/2, pos.y + TILE_H/2 - charH + floatY, charW, charH);
+        
+        // Détails (Yeux Cyberpunk)
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(pos.x - 6, pos.y + TILE_H/2 - charH + 10 + floatY, 12, 4);
+        
+        // Halo
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = color;
+        ctx.strokeRect(pos.x - charW/2, pos.y + TILE_H/2 - charH + floatY, charW, charH);
+        ctx.shadowBlur = 0;
+
+        if (!isLocal) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '8px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillText('Ami_Pro', pos.x, pos.y + floatY - 45);
+        }
+    }
+
+    function update() {
+        // Mouvement
+        let dx = 0, dy = 0;
+        if (keys['w'] || keys['arrowup'])    { dx -= player.speed; dy -= player.speed; }
+        if (keys['s'] || keys['arrowdown'])  { dx += player.speed; dy += player.speed; }
+        if (keys['a'] || keys['arrowleft'])  { dx -= player.speed; dy += player.speed; }
+        if (keys['d'] || keys['arrowright']) { dx += player.speed; dy -= player.speed; }
+
+        // Collisions simples avec les bords
+        const newX = player.gridX + dx;
+        const newY = player.gridY + dy;
+        
+        if (newX >= 0 && newX < MAP_SIZE) player.gridX = newX;
+        if (newY >= 0 && newY < MAP_SIZE) player.gridY = newY;
+
+        // --- BRANCHEMENT SOCKET.IO ICI ---
+        // if (dx !== 0 || dy !== 0) {
+        //    socket.emit('player-move', { x: player.gridX, y: player.gridY });
+        // }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+
+        // Dessiner le sol
+        for (let x = 0; x < MAP_SIZE; x++) {
+            for (let y = 0; y < MAP_SIZE; y++) {
+                drawTile(x, y);
+            }
+        }
+
+        // Tri par profondeur simple (Y-sorting)
+        // Pour un vrai jeu, on trierait tous les objets par x+y
+        const actors = [
+            { gx: player.gridX, gy: player.gridY, color: player.color, isLocal: true },
+            ...otherPlayers.map(p => ({ gx: p.gridX, gy: p.gridY, color: p.color, isLocal: false }))
+        ].sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
+
+        actors.forEach(actor => {
+            drawCharacter(actor.gx, actor.gy, actor.color, actor.isLocal);
+        });
+
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
+    }
+
+    // Lancement
+    draw();
+
+    // Simulation de réception de données Socket
+    // socket.on('player-update', (data) => {
+    //    const p = otherPlayers.find(op => op.id === data.id);
+    //    if (p) { p.gridX = data.x; p.gridY = data.y; }
+    // });
+
+    document.getElementById('readyBtn').onclick = () => {
+        alert("Lancement de la partie 3D...");
+        // window.location.href = "game.html";
+    };
+
+</script>
+
+</body>
+</html>

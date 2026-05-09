@@ -112,8 +112,18 @@ io.on('connection', (socket) => {
 
     const code = socket.roomCode;
     if (code) {
-      // Diffuser aux membres du salon uniquement
       socket.to(code).emit('playerMoved', players[socket.id]);
+    }
+  });
+
+  // ─── Mise à jour statut (Mic/Cam) ───
+  socket.on('update-status', (data) => {
+    if (!players[socket.id]) return;
+    players[socket.id] = { ...players[socket.id], ...data };
+
+    const code = socket.roomCode;
+    if (code) {
+      socket.to(code).emit('playerUpdated', players[socket.id]);
     }
   });
 

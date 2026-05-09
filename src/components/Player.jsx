@@ -4,6 +4,8 @@ import { useSphere } from '@react-three/cannon';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { Vector3, Euler } from 'three';
 import { emitMove } from './SocketManager';
+import { useGameStore } from '../store/useGameStore';
+import { FloatingVideo } from './FloatingVideo';
 
 // ========== PARAMÈTRES (Hardcodés pour stabilité temporaire) ==========
 const WALK_SPEED = 8;
@@ -141,6 +143,8 @@ export const Player = () => {
   // ========== TOUCH LOOK (MOBILE) ==========
   const touchPos = useRef({ x: 0, y: 0 });
   const isMobile = useGameStore(state => state.isMobile);
+  const localStream = useGameStore(state => state.localStream);
+  const cameraEnabled = useGameStore(state => state.localPlayer.cameraEnabled);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -219,6 +223,9 @@ export const Player = () => {
               opacity={1}
             />
           </mesh>
+        )}
+        {cameraEnabled && localStream && (
+          <FloatingVideo stream={localStream} mirrored />
         )}
       </group>
     </>

@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Wifi, Users, Shield, Copy, Check, ArrowLeft, Gamepad2, Mic, MicOff, Video, VideoOff, WifiOff, Monitor, Settings } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
+import { initializeSocket } from './SocketManager';
+import { IsometricLobby } from './IsometricLobby';
 
 const FONT = "'Press Start 2P', monospace";
 const GREEN = '#a8ff3e';
-const PINK  = '#ff6eb4';
-const DARK  = '#040804';
+const PINK = '#ff6eb4';
+const CYAN = '#00f3ff';
+const DARK = '#040804';
 
 // ─── Animations CSS injectées ───
 const LobbyStyles = () => (
@@ -52,6 +56,21 @@ const LobbyStyles = () => (
       background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 4px);
       animation: scanline-anim 1s linear infinite;
     }
+    
+    /* Scrollbar personnalisée */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 10, 0, 0.8);
+      border-left: 1px solid rgba(168, 255, 62, 0.1);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(168, 255, 62, 0.4);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(168, 255, 62, 0.8);
+    }
   `}</style>
 );
 
@@ -62,11 +81,9 @@ const Screen = ({ children, onBack, wide = false }) => (
     display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
     background: 'rgba(2,4,2,0.98)',
-    padding: '20px', // Ajout de padding pour mobile
+    padding: '20px',
   }}>
     <LobbyStyles />
-    
-    {/* Fond type grille Cyberpunk */}
     <div style={{
       position: 'absolute', inset: 0, pointerEvents: 'none',
       background: 'linear-gradient(rgba(168,255,62,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(168,255,62,0.03) 1px, transparent 1px)',
@@ -74,43 +91,39 @@ const Screen = ({ children, onBack, wide = false }) => (
       transform: 'perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-200px)',
       opacity: 0.5,
     }} />
-
-    {/* Scanlines */}
     <div className="scanlines-overlay" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
-
-    {/* Panneau */}
     <div style={{
       position: 'relative',
       width: '100%',
-      maxWidth: wide ? '800px' : '420px', // Adaptatif
-      border: `2px solid ${GREEN}`,
-      boxShadow: `0 0 30px ${GREEN}44, inset 0 0 20px rgba(168,255,62,0.04)`,
-      padding: '36px 5vw', // Padding horizontal adaptatif
+      maxWidth: wide ? '1800px' : '420px',
+      padding: wide ? '40px' : '30px',
       background: 'rgba(0,10,0,0.85)',
       backdropFilter: 'blur(4px)',
       transition: 'all 0.3s ease',
-      maxHeight: '90vh',
+      height: wide ? '95vh' : 'auto',
+      maxHeight: '98vh',
       overflowY: 'auto',
+      display: 'flex',
+      flexDirection: 'column'
     }}>
-      {/* Barre titre */}
       <div style={{
-        fontFamily: FONT, fontSize: 'clamp(0.35rem, 2vw, 0.45rem)', color: GREEN,
-        letterSpacing: '2px', marginBottom: '28px',
+        fontFamily: FONT, fontSize: 'clamp(0.4rem, 1.5vw, 0.6rem)', color: GREEN,
+        letterSpacing: '2px', marginBottom: '20px',
         borderBottom: `1px solid ${GREEN}33`, paddingBottom: '16px',
         display: 'flex', justifyContent: 'space-between'
       }}>
-        <span>VANTAGE ALPHA &gt; SYSTEM</span>
-        <span style={{ color: PINK }}>v0.9.2</span>
+        <span>VANTAGE ALPHA &gt; ESCUADE</span>
+        <span style={{ color: PINK }}>v0.9.5_TACTICAL</span>
       </div>
-
-      {children}
-
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {children}
+      </div>
       {onBack && (
         <button onClick={onBack} style={{
           fontFamily: FONT, fontSize: '0.38rem',
           color: 'rgba(255,255,255,0.3)',
           background: 'transparent', border: 'none',
-          cursor: 'pointer', marginTop: '30px',
+          cursor: 'pointer', marginTop: '20px',
           letterSpacing: '1px', textTransform: 'uppercase',
           width: '100%', textAlign: 'left'
         }}>
@@ -131,336 +144,404 @@ const Btn = ({ children, onClick, color = GREEN, icon = '', large = false, disab
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-        width: '100%', padding: large ? '20px' : '14px 18px',
-        fontFamily: FONT, fontSize: large ? '0.65rem' : '0.52rem', letterSpacing: '2px',
-        textTransform: 'uppercase', 
+        width: '100%', padding: large ? '18px' : '12px 16px',
+        fontFamily: FONT, fontSize: large ? '0.6rem' : '0.45rem', letterSpacing: '2px',
+        textTransform: 'uppercase',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        border: `2px solid ${disabled ? '#555' : color}`,
-        color: disabled ? '#555' : (hover ? '#0a0a0a' : color),
-        background: disabled ? 'transparent' : (hover ? color : 'rgba(0,0,0,0.4)'),
-        boxShadow: disabled ? 'none' : (hover ? `0 0 25px ${color}aa` : `inset -3px -3px 0 ${color}44`),
+        border: `2px solid ${disabled ? '#444' : color}`,
+        color: disabled ? '#444' : (hover ? '#000' : color),
+        background: disabled ? 'transparent' : (hover ? color : 'rgba(0,0,0,0.5)'),
+        boxShadow: disabled ? 'none' : (hover ? `0 0 20px ${color}88` : `inset -2px -2px 0 ${color}33`),
         transition: 'all 0.1s',
-        opacity: disabled ? 0.5 : 1,
+        opacity: disabled ? 0.4 : 1,
       }}
     >
-      {icon && <span style={{ fontSize: large ? '0.9rem' : '0.75rem' }}>{icon}</span>}
+      {icon && <span>{icon}</span>}
       {children}
     </button>
   );
 };
 
-// ─────────────────────────────────────────────────────
-// Écran 1 : Choix
-// ─────────────────────────────────────────────────────
 const ChoiceScreen = ({ onSolo, onCreate, onJoin }) => (
   <Screen>
-    <div style={{ fontFamily: FONT, fontSize: '0.7rem', color: '#fff', marginBottom: '32px', textShadow: `0 0 20px ${GREEN}` }}>
+    <div style={{ fontFamily: FONT, fontSize: '0.7rem', color: '#fff', marginBottom: '32px', textAlign: 'center' }}>
       DÉPLOIEMENT
     </div>
-
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Btn onClick={onSolo}   icon="▶" color={GREEN}>Mode Solo</Btn>
+      <Btn onClick={onSolo} icon="▶" color={GREEN}>Mode Solo</Btn>
       <Btn onClick={onCreate} icon="+" color={GREEN}>Créer Escouade</Btn>
-      <Btn onClick={onJoin}   icon="→" color={PINK} >Rejoindre Escouade</Btn>
+      <Btn onClick={onJoin} icon="→" color={PINK} >Rejoindre Escouade</Btn>
     </div>
   </Screen>
 );
 
-// ─────────────────────────────────────────────────────
-// Écran 2 : Rejoindre (Saisie du code)
-// ─────────────────────────────────────────────────────
 const JoinScreen = ({ socket, onJoined, onBack }) => {
-  const [input,  setInput]  = useState('');
+  const [input, setInput] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get('room');
-    if (roomParam) setInput(roomParam.toUpperCase());
-  }, []);
-
   const handleJoin = () => {
-    if (input.length < 6) { setStatus('Code trop court.'); return; }
+    if (input.length < 6) { setStatus('Code invalide.'); return; }
     setLoading(true);
-    setStatus('Connexion en cours...');
     socket.emit('join-room', input.toUpperCase());
   };
 
   useEffect(() => {
     if (!socket) return;
-    
-    const handleRoomJoined = ({ code }) => {
-      socket.roomCode = code;
-      onJoined(code); // Passe à WaitingRoomScreen
-    };
-
-    const handleError = (msg) => {
-      setStatus(msg);
-      setLoading(false);
-    };
-
+    const handleRoomJoined = ({ code }) => onJoined(code);
+    const handleError = (msg) => { setStatus(msg); setLoading(false); };
     socket.once('room-joined', handleRoomJoined);
     socket.once('room-error', handleError);
-
-    return () => {
-      socket.off('room-joined', handleRoomJoined);
-      socket.off('room-error', handleError);
-    };
+    return () => { socket.off('room-joined', handleRoomJoined); socket.off('room-error', handleError); };
   }, [socket, onJoined]);
 
   return (
     <Screen onBack={onBack}>
-      <div style={{ fontFamily: FONT, fontSize: '0.6rem', color: PINK, marginBottom: '24px' }}>
-        REJOINDRE
-      </div>
-      <div style={{ fontFamily: FONT, fontSize: '0.38rem', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>
-        Liaison sécurisée (6 caractères) :
-      </div>
+      <div style={{ fontFamily: FONT, fontSize: '0.6rem', color: PINK, marginBottom: '24px', textAlign: 'center' }}>REJOINDRE</div>
       <input
         value={input}
         onChange={e => setInput(e.target.value.toUpperCase().slice(0, 6))}
         placeholder="CODE"
         maxLength={6}
         style={{
-          width: '100%', padding: '16px',
-          fontFamily: FONT, fontSize: '1.5rem',
-          letterSpacing: '12px', textAlign: 'center',
-          color: PINK, background: 'rgba(0,0,0,0.8)',
-          border: `2px solid ${PINK}`,
-          boxShadow: `inset -4px -4px 0 ${PINK}44, 0 0 15px ${PINK}22`,
-          outline: 'none', marginBottom: '24px',
-          caretColor: PINK,
+          width: '100%', padding: '16px', fontFamily: FONT, fontSize: '1.2rem',
+          letterSpacing: '10px', textAlign: 'center', color: PINK, background: '#000',
+          border: `2px solid ${PINK}`, outline: 'none', marginBottom: '20px'
         }}
       />
-      {status && (
-        <div style={{
-          fontFamily: FONT, fontSize: '0.35rem',
-          color: PINK, marginBottom: '20px', lineHeight: 1.8,
-        }}>
-          &gt; {status}
-        </div>
-      )}
-      <Btn onClick={handleJoin} color={PINK} icon="⚡">
-        {loading ? 'Liaison...' : 'Connecter'}
-      </Btn>
+      {status && <div style={{ color: PINK, fontSize: '0.35rem', marginBottom: '15px' }}>{status}</div>}
+      <Btn onClick={handleJoin} color={PINK} icon="⚡">{loading ? 'Connexion...' : 'Connecter'}</Btn>
     </Screen>
   );
 };
 
-// ─────────────────────────────────────────────────────
-// Écran 3 : Salon d'Attente (Waiting Room)
-// ─────────────────────────────────────────────────────
-// Affiche l'état de l'escouade (Hôte + Ami)
 const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
   const players = useGameStore(state => state.players);
-  
-  // Filtrer les joueurs actuellement dans ce salon
-  const roomPlayers = Object.values(players).filter(p => p.roomCode === code);
-  const friendJoined = roomPlayers.length > 1;
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
+  const setLocalStream = useGameStore(state => state.setLocalStream);
+  const isStarting = useGameStore(state => state.isStarting);
+  const setIsStarting = useGameStore(state => state.setIsStarting);
+  const setIsGameStarted = useGameStore(state => state.setIsGameStarted);
+  const playerCount = Object.keys(players || {}).length;
+
+  const [copied, setCopied] = useState(false);
+  const [wifiLevel, setWifiLevel] = useState(100);
+  const [leftWidth, setLeftWidth] = useState(72);
+
+  // --- MEDIA STATES ---
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedMic, setSelectedMic] = useState('');
+  const [selectedCam, setSelectedCam] = useState('');
+  const [loopback, setLoopback] = useState(false);
+
+  const videoRef = useRef(null);
+  const audioRef = useRef(null); // Ref pour le retour audio
+  const micLevelRef = useRef(null); // Ref directe pour éviter le lag (re-render)
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const streamRef = useRef(null);
+  const animRef = useRef(null);
+
+  // Enumeration des périphériques
+  useEffect(() => {
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const audios = devices.filter(d => d.kind === 'audioinput');
+        const videos = devices.filter(d => d.kind === 'videoinput');
+        setAudioDevices(audios);
+        setVideoDevices(videos);
+        if (audios.length > 0) setSelectedMic(audios[0].deviceId);
+        if (videos.length > 0) setSelectedCam(videos[0].deviceId);
+      }).catch(err => console.error("Enumerate devices error:", err));
+    }
+  }, []);
+
+  // Gestion du flux média pour le test
+  useEffect(() => {
+    if ((localPlayer?.cameraEnabled || localPlayer?.micEnabled) && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      const constraints = {
+        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: { exact: selectedMic } } : true) : false,
+        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: { exact: selectedCam } } : true) : false,
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+          streamRef.current = stream;
+          setLocalStream(stream);
+          if (videoRef.current && localPlayer?.cameraEnabled) {
+            videoRef.current.srcObject = stream;
+          }
+          if (audioRef.current && localPlayer?.micEnabled) {
+            audioRef.current.srcObject = stream;
+          }
+
+          if (localPlayer?.micEnabled) {
+            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContextRef.current.createMediaStreamSource(stream);
+            analyserRef.current = audioContextRef.current.createAnalyser();
+            analyserRef.current.fftSize = 256;
+            source.connect(analyserRef.current);
+
+            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+            const updateLevel = () => {
+              if (!analyserRef.current) return;
+              analyserRef.current.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+              const level = Math.min(100, Math.round((sum / dataArray.length) * 1.5));
+              if (micLevelRef.current) micLevelRef.current.style.width = `${level}%`;
+              animRef.current = requestAnimationFrame(updateLevel);
+            };
+            updateLevel();
+          }
+        }).catch(err => {
+          console.error("Media error:", err);
+          if (localPlayer?.micEnabled) setLocalPlayerStatus({ micEnabled: false });
+          if (localPlayer?.cameraEnabled) setLocalPlayerStatus({ cameraEnabled: false });
+        });
+    }
+
+    return () => {
+      try {
+        // Ne pas couper le stream si on est en train de lancer le jeu (transition vers 3D)
+        if (streamRef.current && !useGameStore.getState().isStarting) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          setLocalStream(null);
+        }
+        if (animRef.current) cancelAnimationFrame(animRef.current);
+        if (audioContextRef.current) {
+          if (audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close().catch(e => console.error("Audio close err:", e));
+          }
+          audioContextRef.current = null;
+        }
+      } catch (err) {
+        console.error("Cleanup error:", err);
+      }
+      if (micLevelRef.current) micLevelRef.current.style.width = '0%';
+    };
+  }, [localPlayer?.micEnabled, localPlayer?.cameraEnabled, selectedMic, selectedCam, setLocalPlayerStatus]);
+
+  // Update loopback mute status dynamically without restarting stream
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = !loopback;
+      if (loopback) {
+        audioRef.current.play().catch(e => console.error("Audio play err:", e));
+      }
+    }
+  }, [loopback]);
+
+  // Le déclenchement global est géré dans SocketManager.jsx
 
   useEffect(() => {
-    if (!socket) return;
-    
-    // Écouter le signal de démarrage du jeu
-    const handleGameStarted = () => {
-      onStartGame();
-    };
-    
-    socket.on('game-started', handleGameStarted);
-    return () => socket.off('game-started', handleGameStarted);
-  }, [socket, onStartGame]);
+    const interval = setInterval(() => {
+      setWifiLevel(prev => Math.max(60, Math.min(100, prev + (Math.random() - 0.5) * 5)));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleLaunch = () => {
-    if (isHost && socket) {
-      socket.emit('start-game');
-    }
+  const handleResize = (e) => {
+    const newWidth = (e.clientX / window.innerWidth) * 100;
+    if (newWidth > 20 && newWidth < 80) setLeftWidth(newWidth);
+  };
+
+  const startResizing = () => {
+    window.addEventListener('mousemove', handleResize);
+    window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleResize));
+  };
+
+  const toggleMic = () => {
+    const newVal = !localPlayer?.micEnabled;
+    setLocalPlayerStatus({ micEnabled: newVal });
+    socket.emit('update-status', { micEnabled: newVal });
+  };
+
+  const toggleCamera = () => {
+    const newVal = !localPlayer?.cameraEnabled;
+    setLocalPlayerStatus({ cameraEnabled: newVal });
+    socket.emit('update-status', { cameraEnabled: newVal });
+  };
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <Screen wide onBack={onBack}>
-      {/* En-tête du salon */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '32px' }}>
-        <div>
-          <div style={{ fontFamily: FONT, fontSize: '0.8rem', color: '#fff', textShadow: `0 0 15px ${GREEN}` }}>
-            SALON D'ATTENTE
-          </div>
-          <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: 'rgba(255,255,255,0.4)', marginTop: '8px' }}>
-            STATUT : {friendJoined ? 'ESCOUADE COMPLÈTE' : 'RECHERCHE EN COURS...'}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: GREEN, marginBottom: '8px' }}>CODE D'ACCÈS</div>
-          <div style={{ 
-            fontFamily: FONT, fontSize: '1.2rem', color: GREEN, 
-            background: 'rgba(168,255,62,0.1)', padding: '8px 16px',
-            border: `1px solid ${GREEN}55`, letterSpacing: '4px'
-          }}>
-            {code}
-          </div>
-        </div>
-      </div>
+      <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'stretch', width: '100%', cursor: 'default' }}>
 
-      {/* Cartes des joueurs */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '24px', 
-        marginBottom: '40px',
-        flexWrap: 'wrap' // Permet l'empilement sur mobile
-      }}>
-        
-        {/* Emplacement 1 : Hôte */}
-        <div className="slot-filled" style={{
-          flex: '1 1 280px', // Largeur min 280px avant d'empiler
-          height: '220px', border: `2px solid ${GREEN}`,
-          background: 'rgba(0,20,0,0.6)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, padding: '8px', background: GREEN, color: '#000', fontFamily: FONT, fontSize: '0.3rem' }}>
-            JOUEUR 1 (HÔTE)
-          </div>
-          <div className="avatar-float" style={{
-            width: '60px', height: '60px', background: GREEN,
-            boxShadow: `0 0 20px ${GREEN}`, marginBottom: '16px',
-            clipPath: 'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)'
-          }} />
-          <div style={{ fontFamily: FONT, fontSize: '0.45rem', color: '#fff' }}>PRÊT</div>
-        </div>
-
-        {/* Emplacement 2 : Ami */}
-        <div className={friendJoined ? "slot-filled-pink" : ""} style={{
-          flex: '1 1 280px', // Largeur min 280px
-          height: '220px', 
-          border: `2px ${friendJoined ? 'solid' : 'dashed'} ${friendJoined ? PINK : 'rgba(255,255,255,0.2)'}`,
-          background: friendJoined ? 'rgba(20,0,10,0.6)' : 'rgba(0,0,0,0.4)', 
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', position: 'relative'
-        }}>
-          <div style={{ 
-            position: 'absolute', top: 0, left: 0, padding: '8px', 
-            background: friendJoined ? PINK : 'rgba(255,255,255,0.2)', 
-            color: '#000', fontFamily: FONT, fontSize: '0.3rem' 
-          }}>
-            JOUEUR 2
+        {/* LEFT: ISOMETRIC VIEW */}
+        <div style={{ width: `${leftWidth}%`, position: 'relative', border: `2px solid ${GREEN}44`, background: '#000', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <IsometricLobby roomCode={code} isHost={isHost} />
           </div>
           
-          {friendJoined ? (
-            <>
-              <div className="avatar-float" style={{
-                width: '60px', height: '60px', background: PINK,
-                boxShadow: `0 0 20px ${PINK}`, marginBottom: '16px',
-                clipPath: 'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)'
-              }} />
-              <div style={{ fontFamily: FONT, fontSize: '0.45rem', color: '#fff' }}>PRÊT</div>
-            </>
-          ) : (
-            <div className="waiting-dots" style={{ fontFamily: FONT, fontSize: '0.4rem', color: 'rgba(255,255,255,0.4)' }}>
-              ATTENTE
+          <div style={{ position: 'absolute', top: '15px', left: '15px', fontFamily: FONT, fontSize: '0.4rem', color: GREEN, background: 'rgba(0,0,0,0.8)', padding: '8px 12px', border: `1px solid ${GREEN}44` }}>
+            SYSTEM_LINK: ACTIVE
+          </div>
+        </div>
+
+        {/* RESIZE HANDLE */}
+        <div 
+          onMouseDown={startResizing}
+          style={{ 
+            width: '15px', cursor: 'col-resize', background: 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.2s', zIndex: 10
+          }}
+          onMouseEnter={(e) => e.target.style.background = `${GREEN}22`}
+          onMouseLeave={(e) => e.target.style.background = 'transparent'}
+        >
+          <div style={{ width: '2px', height: '40px', background: `${GREEN}88` }} />
+        </div>
+
+        {/* RIGHT: CONTROL PANEL PRO */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', background: 'rgba(0,5,0,0.8)', padding: '20px', border: `2px solid ${GREEN}44`, minWidth: '350px', overflowY: 'auto' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: FONT, fontSize: '0.3rem', color: 'rgba(168,255,62,0.6)', marginBottom: '8px', letterSpacing: '2px' }}>CANAL ESCUADE</div>
+              <div onClick={copyCode} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                fontFamily: FONT, fontSize: '0.8rem', color: GREEN,
+                background: '#010501', padding: '15px', border: `2px solid ${GREEN}66`, cursor: 'pointer',
+                boxShadow: `inset 0 0 10px ${GREEN}22`
+              }}>
+                <span style={{ letterSpacing: '5px' }}>{code}</span>
+                {copied ? <Check size={20} /> : <Copy size={20} />}
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* DIAGNOSTIC MEDIA SECTION */}
+          <div style={{ padding: '15px', background: 'rgba(0,10,0,0.6)', border: `1px solid ${CYAN}44`, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: CYAN, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Settings size={14} /> CONFIGURATION PÉRIPHÉRIQUES
+            </div>
+            
+            {/* CAMERA CONFIG */}
+            <div style={{ marginBottom: '15px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                <button onClick={toggleCamera} style={{
+                  padding: '8px 12px', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#333'}`,
+                  background: localPlayer?.cameraEnabled ? 'rgba(255,110,180,0.2)' : '#000',
+                  color: localPlayer?.cameraEnabled ? PINK : '#666', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
+                }}>
+                  {localPlayer?.cameraEnabled ? 'CAM ACTIF' : 'CAM OFF'}
+                </button>
+                <select value={selectedCam} onChange={e => setSelectedCam(e.target.value)} style={{
+                  flex: 1, background: '#000', border: `1px solid ${PINK}66`, color: PINK,
+                  fontFamily: FONT, fontSize: '0.3rem', padding: '5px', minWidth: 0
+                }}>
+                  {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0,5)}`}</option>)}
+                </select>
+              </div>
+              
+              <div style={{ flex: 1, width: '100%', minHeight: '120px', background: '#000', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#222'}`, position: 'relative', overflow: 'hidden' }}>
+                {localPlayer?.cameraEnabled ? 
+                  <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} /> 
+                  : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#222' }}><VideoOff size={30}/></div>
+                }
+              </div>
+            </div>
+
+            {/* MIC CONFIG */}
+            <div style={{ marginTop: 'auto' }}>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                <button onClick={toggleMic} style={{
+                  padding: '8px 12px', border: `2px solid ${localPlayer?.micEnabled ? GREEN : '#333'}`,
+                  background: localPlayer?.micEnabled ? 'rgba(168,255,62,0.2)' : '#000',
+                  color: localPlayer?.micEnabled ? GREEN : '#666', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
+                }}>
+                  {localPlayer?.micEnabled ? 'MIC ACTIF' : 'MIC OFF'}
+                </button>
+                <select value={selectedMic} onChange={e => setSelectedMic(e.target.value)} style={{
+                  flex: 1, background: '#000', border: `1px solid ${GREEN}66`, color: GREEN,
+                  fontFamily: FONT, fontSize: '0.3rem', padding: '5px', minWidth: 0
+                }}>
+                  {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Micro ${d.deviceId.slice(0,5)}`}</option>)}
+                </select>
+              </div>
+              
+              {/* Audio Visualizer & Loopback */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ flex: 1, height: '12px', background: '#000', border: `1px solid ${GREEN}44`, position: 'relative' }}>
+                  <div ref={micLevelRef} style={{ width: '0%', height: '100%', background: GREEN, transition: 'width 0.1s' }} />
+                </div>
+                <button onClick={() => setLoopback(!loopback)} style={{
+                  padding: '5px 8px', background: loopback ? GREEN : 'transparent', color: loopback ? '#000' : GREEN,
+                  border: `1px solid ${GREEN}`, cursor: 'pointer', fontFamily: FONT, fontSize: '0.28rem'
+                }}>
+                  {loopback ? 'TEST: ON' : 'TEST: OFF'}
+                </button>
+                <audio ref={audioRef} autoPlay playsInline />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 'auto' }}>
+            {isHost ? (
+              <Btn large onClick={() => { 
+                socket.emit('start-game');
+                
+                // Signal "Burst" Magique : On utilise la rotation pour contourner les filtres du serveur
+                let count = 0;
+                const interval = setInterval(() => {
+                  socket.emit('move', { 
+                    position: [0, 5, 0], 
+                    rotation: [0, 999, 0] // 999 est notre signal de départ !
+                  });
+                  count++;
+                  if (count >= 5) clearInterval(interval);
+                }, 100);
+                
+                setIsStarting(true);
+                setIsGameStarted(true);
+              }} disabled={playerCount < 1} color={CYAN}>
+                🚀 INITIATION SÉQUENCE DE DÉPLOIEMENT
+              </Btn>
+            ) : (
+              <div style={{
+                padding: '20px', textAlign: 'center', background: 'rgba(255,110,180,0.05)',
+                border: `2px solid ${PINK}55`, color: PINK, fontFamily: FONT, fontSize: '0.45rem', letterSpacing: '4px'
+              }}>
+                <span className="waiting-dots">SYNCHRONISATION HÔTE</span>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
-
-      {/* Bouton d'action (Lancer / Attendre) */}
-      {isHost ? (
-        <Btn large icon="🚀" onClick={handleLaunch}>
-          LANCER LA PARTIE
-        </Btn>
-      ) : (
-        <div style={{
-          width: '100%', padding: '20px', textAlign: 'center',
-          background: 'rgba(255,110,180,0.1)', border: `1px solid ${PINK}55`,
-          color: PINK, fontFamily: FONT, fontSize: '0.5rem',
-          boxShadow: `inset 0 0 20px ${PINK}22`
-        }}>
-          <span className="waiting-dots">EN ATTENTE DE L'HÔTE</span>
-        </div>
-      )}
     </Screen>
   );
 };
 
-// ─────────────────────────────────────────────────────
-// Export principal
-// ─────────────────────────────────────────────────────
 export const LobbyMenu = ({ socket, onStart }) => {
-  const [screen, setScreen] = useState('choice'); // 'choice' | 'create_loading' | 'join' | 'waiting'
+  const [screen, setScreen] = useState('choice');
   const [roomCode, setRoomCode] = useState(null);
   const [isHost, setIsHost] = useState(false);
 
-  const handleSolo = () => {
-    socket?.emit('join-solo');
-    onStart({ mode: 'solo', code: null });
-  };
-
-  const handleEnterWorld = () => {
-    onStart({ mode: 'room', code: roomCode || socket?.roomCode });
-  };
+  const handleSolo = () => { socket?.emit('join-solo'); onStart({ mode: 'solo', code: null }); };
+  const handleEnterWorld = () => onStart({ mode: 'room', code: roomCode || socket?.roomCode });
 
   const handleCreateRequest = () => {
     if (!socket) return;
     setScreen('create_loading');
-    
-    const handleCreated = ({ code: c }) => {
-      setRoomCode(c);
-      socket.roomCode = c;
-      setIsHost(true);
-      setScreen('waiting');
-    };
-
-    socket.once('room-created', handleCreated);
-    
-    if (socket.connected) {
-      socket.emit('create-room');
-    } else {
-      socket.once('connect', () => socket.emit('create-room'));
-    }
+    socket.once('room-created', ({ code }) => {
+      setRoomCode(code); socket.roomCode = code; setIsHost(true); setScreen('waiting');
+    });
+    if (socket.connected) socket.emit('create-room');
+    else socket.once('connect', () => socket.emit('create-room'));
   };
 
-  const handleJoinSuccess = (code) => {
-    setRoomCode(code);
-    setIsHost(false);
-    setScreen('waiting');
-  };
+  if (screen === 'create_loading') return <Screen><div className="waiting-dots" style={{ fontFamily: FONT, color: GREEN, fontSize: '0.6rem' }}>GÉNÉRATION...</div></Screen>;
+  if (screen === 'join') return <JoinScreen socket={socket} onJoined={(c) => { setRoomCode(c); setIsHost(false); setScreen('waiting'); }} onBack={() => setScreen('choice')} />;
+  if (screen === 'waiting') return <WaitingRoomScreen socket={socket} code={roomCode} isHost={isHost} onStartGame={handleEnterWorld} onBack={() => setScreen('choice')} />;
 
-  // Écran de chargement intermédiaire pour la création
-  if (screen === 'create_loading') return (
-    <Screen>
-      <div className="waiting-dots" style={{ fontFamily: FONT, color: GREEN, fontSize: '0.6rem' }}>
-        GÉNÉRATION DU SALON
-      </div>
-    </Screen>
-  );
-
-  if (screen === 'join') return (
-    <JoinScreen
-      socket={socket}
-      onJoined={handleJoinSuccess}
-      onBack={() => setScreen('choice')}
-    />
-  );
-
-  if (screen === 'waiting') return (
-    <WaitingRoomScreen
-      socket={socket}
-      code={roomCode}
-      isHost={isHost}
-      onStartGame={handleEnterWorld}
-      onBack={() => {
-        // En vrai, il faudrait émettre un 'leave-room' au serveur, 
-        // mais pour l'instant on revient juste au choix.
-        setScreen('choice');
-        setRoomCode(null);
-      }}
-    />
-  );
-
-  return (
-    <ChoiceScreen
-      onSolo={handleSolo}
-      onCreate={handleCreateRequest}
-      onJoin={() => setScreen('join')}
-    />
-  );
+  return <ChoiceScreen onSolo={handleSolo} onCreate={handleCreateRequest} onJoin={() => setScreen('join')} />;
 };

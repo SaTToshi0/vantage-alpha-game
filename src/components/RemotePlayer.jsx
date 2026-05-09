@@ -1,6 +1,8 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useRef, useState } from 'react';
 import { Vector3, Euler } from 'three';
+import { useGameStore } from '../store/useGameStore';
+import { FloatingVideo } from './FloatingVideo';
 
 // ========== CONSTANTES ==========
 const POSITION_LERP = 0.15;
@@ -8,8 +10,9 @@ const ROTATION_LERP = 0.1;
 const VERY_FAR_DISTANCE = 150; 
 const FAR_DISTANCE = 80;       
 
-export const RemotePlayer = ({ id, position, rotation }) => {
+export const RemotePlayer = ({ id, position, rotation, cameraEnabled }) => {
   const groupRef = useRef();
+  const remoteStream = useGameStore(state => state.remoteStreams[id]);
   
   const targetPosition = useRef(new Vector3(...(Array.isArray(position) ? position : [0, 0, 0])));
   const targetRotation = useRef(new Euler(0, 0, 0, 'YXZ'));
@@ -109,6 +112,11 @@ export const RemotePlayer = ({ id, position, rotation }) => {
             opacity={1}
           />
         </mesh>
+      )}
+
+      {/* Caméra flottante distante */}
+      {cameraEnabled && remoteStream && (
+        <FloatingVideo stream={remoteStream} />
       )}
     </group>
   );

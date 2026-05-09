@@ -57,7 +57,11 @@ function HUD({ roomCode }) {
 
 // ─── App ───
 function App() {
-  const { players, localPlayer, setIsMobile } = useGameStore();
+  const players = useGameStore(state => state.players);
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const isGameStarted = useGameStore(state => state.isGameStarted);
+  const roomCodeFromStore = useGameStore(state => state.roomCode);
+  const setIsMobile = useGameStore(state => state.setIsMobile);
 
   // 'main' → écran d'accueil pixel-art
   // 'lobby' → choix solo / créer / rejoindre
@@ -71,15 +75,25 @@ function App() {
     const s = initializeSocket();
     setSocket(s);
 
-    // Détection Mobile
-    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // Détection Mobile plus stricte (évite les PC portables tactiles)
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    setIsMobile(isTouch || isMobileUA);
+    const isSmallScreen = window.innerWidth <= 800;
+    setIsMobile(isMobileUA || (isSmallScreen && ('ontouchstart' in window)));
 
     // Si l'URL contient ?room=CODE → passer directement au lobby "rejoindre"
     const params = new URLSearchParams(window.location.search);
     if (params.get('room')) setScreen('lobby');
   }, []);
+
+  // Déclenchement automatique du jeu pour tous
+  useEffect(() => {
+    if (isGameStarted && screen !== 'game') {
+      if (roomCodeFromStore && !roomCode) {
+        setRoomCode(roomCodeFromStore);
+      }
+      setScreen('game');
+    }
+  }, [isGameStarted, screen, roomCodeFromStore, roomCode]);
 
   const handleMainStart = () => setScreen('lobby');
 
@@ -108,7 +122,7 @@ function App() {
             {hasStarted && <Player />}
             {hasStarted && Object.values(players).map((p) =>
               p.id !== localPlayer?.id && (
-                <RemotePlayer key={p.id} position={p.position} rotation={p.rotation} />
+                <RemotePlayer key={p.id} id={p.id} position={p.position} rotation={p.rotation} cameraEnabled={p.cameraEnabled} />
               )
             )}
           </Physics>

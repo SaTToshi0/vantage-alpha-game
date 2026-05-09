@@ -6,7 +6,27 @@ export const useGameStore = create((set) => ({
     id: null,
     position: [0, 0, 0],
     rotation: [0, 0, 0],
+    micEnabled: false,
+    cameraEnabled: false,
+    wifiSignal: 100,
   },
+  localStream: null,
+  setLocalStream: (stream) => set({ localStream: stream }),
+  remoteStreams: {},
+  addRemoteStream: (id, stream) => set((state) => ({
+    remoteStreams: { ...state.remoteStreams, [id]: stream }
+  })),
+  removeRemoteStream: (id) => set((state) => {
+    const next = { ...state.remoteStreams };
+    delete next[id];
+    return { remoteStreams: next };
+  }),
+  isStarting: false,
+  setIsStarting: (isStarting) => set({ isStarting }),
+  isGameStarted: false,
+  setIsGameStarted: (isGameStarted) => set({ isGameStarted }),
+  roomCode: null,
+  setRoomCode: (roomCode) => set({ roomCode }),
   isMobile: false,
   setIsMobile: (isMobile) => set({ isMobile }),
   setPlayers: (players) => set({ players }),
@@ -23,5 +43,8 @@ export const useGameStore = create((set) => ({
   }),
   setLocalPlayerId: (id) => set((state) => ({
     localPlayer: { ...state.localPlayer, id },
+  })),
+  setLocalPlayerStatus: (data) => set((state) => ({
+    localPlayer: { ...state.localPlayer, ...data },
   })),
 }));

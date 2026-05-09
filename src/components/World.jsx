@@ -3,6 +3,102 @@ import { usePlane, useBox } from '@react-three/cannon';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { MedievalScenery } from './MedievalScenery';
+import { GiantScreen } from './GiantScreen';
+import { useGameStore } from '../store/useGameStore';
+
+// Gestionnaire dynamique des écrans centraux
+const ScreenManager = () => {
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const localStream = useGameStore(state => state.localStream);
+  const players = useGameStore(state => state.players);
+  const remoteStreams = useGameStore(state => state.remoteStreams);
+
+  // Rassembler tous les joueurs avec une caméra active
+  const activeScreens = [];
+
+  if (localPlayer?.cameraEnabled && localStream) {
+    activeScreens.push({
+      id: 'local',
+      player: localPlayer,
+      stream: localStream,
+      color: '#a8ff3e', // Vert pour le joueur local
+      mirrored: true
+    });
+  }
+
+  Object.values(players || {}).forEach((p) => {
+    if (p.cameraEnabled && remoteStreams[p.id]) {
+      activeScreens.push({
+        id: p.id,
+        player: p,
+        stream: remoteStreams[p.id],
+        color: '#ff00ff', // Rose pour les joueurs distants
+        mirrored: false
+      });
+    }
+  });
+
+  if (activeScreens.length === 0) return null;
+
+  // Placement spécifique
+  const radius = 15;
+  const height = 16; // Plus de hauteur
+  const screenScale = 0.7; // Plus petit
+
+  // Cas spécial : 2 écrans face à face
+  if (activeScreens.length === 2) {
+    return (
+      <group>
+        <GiantScreen 
+          key={activeScreens[0].id}
+          stream={activeScreens[0].stream}
+          player={activeScreens[0].player}
+          position={[-radius, height, 0]}
+          rotation={[0, Math.PI / 2, 0]} // Fait face à la droite
+          scale={screenScale}
+          color={activeScreens[0].color}
+          mirrored={activeScreens[0].mirrored}
+        />
+        <GiantScreen 
+          key={activeScreens[1].id}
+          stream={activeScreens[1].stream}
+          player={activeScreens[1].player}
+          position={[radius, height, 0]}
+          rotation={[0, -Math.PI / 2, 0]} // Fait face à la gauche
+          scale={screenScale}
+          color={activeScreens[1].color}
+          mirrored={activeScreens[1].mirrored}
+        />
+      </group>
+    );
+  }
+
+  // Cas générique (1 écran ou 3+ écrans) en arc
+  const angleStep = Math.PI / 6;
+  return (
+    <group>
+      {activeScreens.map((screenData, index) => {
+        const angle = (index - (activeScreens.length - 1) / 2) * angleStep;
+        const x = Math.sin(angle) * radius;
+        const z = -Math.cos(angle) * radius;
+        const rotationY = -angle;
+
+        return (
+          <GiantScreen 
+            key={screenData.id}
+            stream={screenData.stream}
+            player={screenData.player}
+            position={[x, height, z]}
+            rotation={[0, rotationY, 0]}
+            scale={screenScale}
+            color={screenData.color}
+            mirrored={screenData.mirrored}
+          />
+        );
+      })}
+    </group>
+  );
+};
 
 // Base d'atterrissage — version complète et animée
 const LandingBase = () => {
@@ -119,6 +215,7 @@ export const World = () => {
       </mesh>
 
       <LandingBase />
+      <ScreenManager />
       <MedievalScenery />
     </>
   );
