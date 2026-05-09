@@ -105,82 +105,145 @@ const ScreenManager = () => {
   );
 };
 
-// Base d'atterrissage — version complète et animée
+// Base d'atterrissage — Nexus Cyberpunk Haut de Gamme
 const LandingBase = () => {
+  // Zone de collision principale
   const [ref] = useBox(() => ({
     mass: 0, type: 'Static',
-    position: [0, 0.2, 0],
-    args: [10, 0.4, 10],
+    position: [0, 0.5, 0], // Rehaussé légèrement pour correspondre au visuel
+    args: [12, 1, 12],
   }));
 
-  const ring1Ref = useRef();
-  const ring2Ref = useRef();
-  const beamRef  = useRef();
+  const coreRing1Ref = useRef();
+  const coreRing2Ref = useRef();
+  const coreRing3Ref = useRef();
+  const dataStreamRef = useRef();
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (ring1Ref.current) ring1Ref.current.rotation.z =  t * 0.8;
-    if (ring2Ref.current) ring2Ref.current.rotation.z = -t * 0.5;
-    if (beamRef.current)  beamRef.current.material.opacity = 0.15 + Math.sin(t * 2) * 0.05;
+    if (coreRing1Ref.current) {
+      coreRing1Ref.current.rotation.z = t * 0.5;
+      coreRing1Ref.current.position.y = 0.5 + Math.sin(t * 2) * 0.1;
+    }
+    if (coreRing2Ref.current) {
+      coreRing2Ref.current.rotation.z = -t * 0.8;
+      coreRing2Ref.current.position.y = 0.5 + Math.cos(t * 1.5) * 0.1;
+    }
+    if (coreRing3Ref.current) {
+      coreRing3Ref.current.rotation.x = t * 1;
+      coreRing3Ref.current.rotation.y = t * 1.2;
+    }
+    if (dataStreamRef.current) {
+      // Effet de flux de données montant
+      dataStreamRef.current.material.opacity = 0.1 + Math.sin(t * 5) * 0.05;
+      dataStreamRef.current.rotation.y = t * 0.2;
+    }
   });
 
   return (
     <group position={[0, 0, 0]}>
-      {/* Plateforme principale */}
-      <mesh ref={ref} position={[0, 0.2, 0]} receiveShadow>
-        <cylinderGeometry args={[5, 5.5, 0.4, 8]} />
-        <meshStandardMaterial color="#05050a" metalness={1} roughness={0.05} />
+      {/* --- PLATEFORME PRINCIPALE --- */}
+      <mesh ref={ref} position={[0, 0.1, 0]} receiveShadow>
+        {/* Base large métallique */}
+        <cylinderGeometry args={[6, 7, 0.4, 16]} />
+        <meshStandardMaterial color="#0a0b10" metalness={0.9} roughness={0.2} />
+      </mesh>
+      
+      {/* Couche intermédiaire en verre fumé */}
+      <mesh position={[0, 0.35, 0]}>
+        <cylinderGeometry args={[5.5, 6, 0.2, 16]} />
+        <meshStandardMaterial color="#11111a" metalness={1} roughness={0.05} transparent opacity={0.8} />
       </mesh>
 
-      {/* Anneaux Tech rotatifs */}
-      <mesh position={[0, 0.41, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <group ref={ring1Ref}>
-          <ringGeometry args={[3.8, 4, 32, 1, 0, Math.PI * 1.5]} />
-          <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={3} side={2} />
-        </group>
-        <group ref={ring2Ref}>
-          <ringGeometry args={[3.2, 3.4, 32, 1, Math.PI / 2, Math.PI * 1.2]} />
-          <meshStandardMaterial color="#ff8c42" emissive="#ff8c42" emissiveIntensity={3} side={2} />
-        </group>
+      {/* Surface de marche détaillée */}
+      <mesh position={[0, 0.5, 0]}>
+        <cylinderGeometry args={[5, 5.5, 0.1, 16]} />
+        <meshStandardMaterial color="#050508" metalness={0.7} roughness={0.5} />
       </mesh>
 
-      {/* Motif géométrique interne */}
-      <mesh position={[0, 0.405, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.5, 4.8, 8]} />
-        <meshStandardMaterial color="#00d8ff" wireframe transparent opacity={0.15} />
+      {/* Lignes de circuit (Néon incrusté au sol) */}
+      <mesh position={[0, 0.56, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[3.8, 4.0, 32]} />
+        <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={2} />
+      </mesh>
+      <mesh position={[0, 0.56, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.8, 1.9, 16]} />
+        <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={1.5} />
       </mesh>
 
-      {/* Centre violet */}
-      <mesh position={[0, 0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[1.5, 32]} />
-        <meshStandardMaterial color="#9b59b6" emissive="#5e35b1" emissiveIntensity={1} />
+      {/* --- NOYAU CENTRAL HOLOGRAPHIQUE --- */}
+      {/* Pilier de données central */}
+      <mesh ref={dataStreamRef} position={[0, 5, 0]}>
+        <cylinderGeometry args={[0.8, 0.8, 10, 16, 1, true]} />
+        <meshStandardMaterial 
+          color="#00d8ff" 
+          emissive="#00d8ff" 
+          emissiveIntensity={3}
+          transparent 
+          opacity={0.15} 
+          wireframe 
+          depthWrite={false} 
+          blending={2} 
+        />
       </mesh>
 
-      {/* Rayon holographique vertical */}
-      <mesh ref={beamRef} position={[0, 5, 0]}>
-        <cylinderGeometry args={[1.5, 1.5, 10, 32, 1, true]} />
-        <meshStandardMaterial color="#9b59b6" emissive="#9b59b6" emissiveIntensity={2}
-          transparent opacity={0.2} depthWrite={false} blending={2} />
-      </mesh>
+      {/* Cœur énergétique flottant */}
+      <group position={[0, 1.5, 0]}>
+        <mesh>
+          <octahedronGeometry args={[0.4]} />
+          <meshStandardMaterial color="#ffffff" emissive="#00d8ff" emissiveIntensity={4} />
+        </mesh>
+        {/* Anneaux complexes autour du noyau */}
+        <mesh ref={coreRing1Ref} rotation={[Math.PI / 2.5, 0, 0]}>
+          <torusGeometry args={[0.8, 0.02, 16, 64]} />
+          <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
+        </mesh>
+        <mesh ref={coreRing2Ref} rotation={[-Math.PI / 3, Math.PI / 4, 0]}>
+          <torusGeometry args={[1.1, 0.015, 16, 64]} />
+          <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={2} />
+        </mesh>
+        <mesh ref={coreRing3Ref}>
+          <boxGeometry args={[1.5, 1.5, 1.5]} />
+          <meshStandardMaterial color="#00d8ff" wireframe transparent opacity={0.3} emissive="#00d8ff" emissiveIntensity={1} />
+        </mesh>
+      </group>
 
-      {/* 4 Piliers avec orbes */}
-      {[[-3.5, -3.5], [3.5, -3.5], [-3.5, 3.5], [3.5, 3.5]].map(([x, z], i) => (
-        <group key={i} position={[x, 1, z]}>
-          <mesh castShadow position={[0, -0.4, 0]}>
-            <cylinderGeometry args={[0.3, 0.5, 1.2, 8]} />
-            <meshStandardMaterial color="#1a1a2e" metalness={0.8} roughness={0.2} />
-          </mesh>
+      {/* --- MONOLITHES PÉRIPHÉRIQUES --- */}
+      {/* 4 Piliers massifs technologiques */}
+      {[
+        [-4.8, -4.8], [4.8, -4.8], [-4.8, 4.8], [4.8, 4.8]
+      ].map(([x, z], i) => (
+        <group key={i} position={[x, 0.5, z]}>
+          {/* Base du pilier */}
           <mesh position={[0, 0.5, 0]}>
-            <sphereGeometry args={[0.25, 16, 16]} />
-            <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={4} />
+            <boxGeometry args={[1.2, 1, 1.2]} />
+            <meshStandardMaterial color="#050508" metalness={0.8} roughness={0.3} />
           </mesh>
-          <mesh position={[0, 0.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.4, 0.03, 8, 32]} />
-            <meshStandardMaterial color="#ffffff" metalness={1} roughness={0.1} />
+          {/* Corps principal biseauté (simulé avec cylindre octogonal) */}
+          <mesh position={[0, 2.5, 0]}>
+            <cylinderGeometry args={[0.4, 0.6, 3, 4]} />
+            <meshStandardMaterial color="#11111a" metalness={1} roughness={0.1} />
           </mesh>
-          <pointLight color="#00d8ff" intensity={2} distance={15} position={[0, 1, 0]} />
+          {/* Bande LED montante */}
+          <mesh position={[0, 2.5, 0]}>
+            <cylinderGeometry args={[0.41, 0.61, 3, 4]} />
+            <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={1.5} wireframe transparent opacity={0.5} />
+          </mesh>
+          {/* Orbe sommital de projection */}
+          <mesh position={[0, 4.2, 0]}>
+            <sphereGeometry args={[0.3, 16, 16]} />
+            <meshStandardMaterial color="#ffffff" emissive={i % 2 === 0 ? "#00d8ff" : "#ff00ff"} emissiveIntensity={3} />
+          </mesh>
+          {/* Halo holographique */}
+          <mesh position={[0, 4.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.4, 0.6, 16]} />
+            <meshStandardMaterial color={i % 2 === 0 ? "#00d8ff" : "#ff00ff"} transparent opacity={0.3} side={2} />
+          </mesh>
         </group>
       ))}
+
+      {/* Lumières intégrées à la base pour éclairer les joueurs sans utiliser de pointLight massifs */}
+      <rectAreaLight width={5} height={5} color="#00d8ff" intensity={2} position={[0, 2, 0]} rotation={[-Math.PI / 2, 0, 0]} />
     </group>
   );
 };
