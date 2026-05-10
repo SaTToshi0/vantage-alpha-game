@@ -84,7 +84,7 @@ export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation 
       </mesh>
       {/* Traits fins de bordure */}
       <lineSegments position={[0, 0, 0.03]}>
-        <edgesGeometry args={[new (require('three').BoxGeometry)(16, 9, 0.01)]} />
+        <edgesGeometry args={[new THREE.BoxGeometry(16, 9, 0.01)]} />
         <lineBasicMaterial color={color} />
       </lineSegments>
 
