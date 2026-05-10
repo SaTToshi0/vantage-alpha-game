@@ -20,7 +20,6 @@ function HUD({ roomCode }) {
   const localStream = useGameStore(state => state.localStream);
   const setLocalStream = useGameStore(state => state.setLocalStream);
   const playerCount = Object.keys(players).length;
-  const streamRef = useRef ? undefined : undefined; // handled by SoloSetupScreen
 
   const toggleMic = () => {
     const newVal = !localPlayer?.micEnabled;

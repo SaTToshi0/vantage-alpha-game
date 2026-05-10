@@ -210,8 +210,8 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
     let vid;
     if (localPlayer?.cameraEnabled || localPlayer?.micEnabled) {
       const constraints = {
-        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: { exact: selectedMic } } : true) : false,
-        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: { exact: selectedCam } } : true) : false,
+        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: selectedMic } : true) : false,
+        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: selectedCam } : true) : false,
       };
       navigator.mediaDevices?.getUserMedia(constraints).then(stream => {
         streamRef.current = stream;
@@ -403,8 +403,8 @@ const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
   useEffect(() => {
     if ((localPlayer?.cameraEnabled || localPlayer?.micEnabled) && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       const constraints = {
-        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: { exact: selectedMic } } : true) : false,
-        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: { exact: selectedCam } } : true) : false,
+        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: selectedMic } : true) : false,
+        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: selectedCam } : true) : false,
       };
 
       navigator.mediaDevices.getUserMedia(constraints)
