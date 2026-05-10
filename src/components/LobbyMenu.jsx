@@ -175,6 +175,147 @@ const ChoiceScreen = ({ onSolo, onCreate, onJoin }) => (
   </Screen>
 );
 
+// ─── Écran de configuration Solo (Cam/Mic avant d'entrer) ───
+const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
+  const setLocalStream = useGameStore(state => state.setLocalStream);
+
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedMic, setSelectedMic] = useState('');
+  const [selectedCam, setSelectedCam] = useState('');
+
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const micLevelRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animRef = useRef(null);
+
+  // Enumération des périphériques
+  useEffect(() => {
+    navigator.mediaDevices?.enumerateDevices().then(devices => {
+      const audios = devices.filter(d => d.kind === 'audioinput');
+      const videos = devices.filter(d => d.kind === 'videoinput');
+      setAudioDevices(audios);
+      setVideoDevices(videos);
+      if (audios.length > 0) setSelectedMic(audios[0].deviceId);
+      if (videos.length > 0) setSelectedCam(videos[0].deviceId);
+    }).catch(console.error);
+  }, []);
+
+  // Démarrer/stopper le flux selon les toggles
+  useEffect(() => {
+    let vid;
+    if (localPlayer?.cameraEnabled || localPlayer?.micEnabled) {
+      const constraints = {
+        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: { exact: selectedMic } } : true) : false,
+        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: { exact: selectedCam } } : true) : false,
+      };
+      navigator.mediaDevices?.getUserMedia(constraints).then(stream => {
+        streamRef.current = stream;
+        setLocalStream(stream);
+        if (videoRef.current && localPlayer?.cameraEnabled) videoRef.current.srcObject = stream;
+        if (localPlayer?.micEnabled) {
+          audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioContextRef.current.createMediaStreamSource(stream);
+          analyserRef.current = audioContextRef.current.createAnalyser();
+          analyserRef.current.fftSize = 256;
+          source.connect(analyserRef.current);
+          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+          const update = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            const level = Math.min(100, Math.round((sum / dataArray.length) * 1.5));
+            if (micLevelRef.current) micLevelRef.current.style.width = `${level}%`;
+            animRef.current = requestAnimationFrame(update);
+          };
+          update();
+        }
+      }).catch(err => {
+        console.error('Media error:', err);
+        setLocalPlayerStatus({ micEnabled: false, cameraEnabled: false });
+      });
+    } else {
+      // Couper le flux si rien n'est actif
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+        setLocalStream(null);
+      }
+    }
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(console.error);
+        audioContextRef.current = null;
+      }
+    };
+  }, [localPlayer?.cameraEnabled, localPlayer?.micEnabled, selectedMic, selectedCam]);
+
+  const toggleCamera = () => setLocalPlayerStatus({ cameraEnabled: !localPlayer?.cameraEnabled });
+  const toggleMic = () => setLocalPlayerStatus({ micEnabled: !localPlayer?.micEnabled });
+
+  return (
+    <Screen onBack={onBack}>
+      <div style={{ fontFamily: FONT, fontSize: '0.6rem', color: GREEN, marginBottom: '24px', textAlign: 'center' }}>CONFIGURATION SOLO</div>
+
+      {/* Prévisualisation caméra */}
+      <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#222'}`, position: 'relative', marginBottom: '16px', overflow: 'hidden' }}>
+        {localPlayer?.cameraEnabled
+          ? <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+          : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333', flexDirection: 'column', gap: '12px' }}>
+              <VideoOff size={40} />
+              <span style={{ fontFamily: FONT, fontSize: '0.3rem', color: '#444' }}>CAMÉRA DÉSACTIVÉE</span>
+            </div>
+        }
+      </div>
+
+      {/* Contrôles Cam */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' }}>
+        <button onClick={toggleCamera} style={{
+          padding: '10px 16px', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#333'}`,
+          background: localPlayer?.cameraEnabled ? 'rgba(255,110,180,0.15)' : '#000',
+          color: localPlayer?.cameraEnabled ? PINK : '#555', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem', flexShrink: 0
+        }}>
+          {localPlayer?.cameraEnabled ? '📷 CAM ACTIF' : '📷 CAM OFF'}
+        </button>
+        <select value={selectedCam} onChange={e => setSelectedCam(e.target.value)} style={{
+          flex: 1, background: '#000', border: `1px solid ${PINK}44`, color: PINK, fontFamily: FONT, fontSize: '0.3rem', padding: '8px', minWidth: 0
+        }}>
+          {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Caméra'}</option>)}
+        </select>
+      </div>
+
+      {/* Contrôles Mic + Niveau */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center' }}>
+        <button onClick={toggleMic} style={{
+          padding: '10px 16px', border: `2px solid ${localPlayer?.micEnabled ? GREEN : '#333'}`,
+          background: localPlayer?.micEnabled ? 'rgba(168,255,62,0.15)' : '#000',
+          color: localPlayer?.micEnabled ? GREEN : '#555', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem', flexShrink: 0
+        }}>
+          {localPlayer?.micEnabled ? '🎤 MIC ACTIF' : '🎤 MIC OFF'}
+        </button>
+        <select value={selectedMic} onChange={e => setSelectedMic(e.target.value)} style={{
+          flex: 1, background: '#000', border: `1px solid ${GREEN}44`, color: GREEN, fontFamily: FONT, fontSize: '0.3rem', padding: '8px', minWidth: 0
+        }}>
+          {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>)}
+        </select>
+      </div>
+      <div style={{ height: '8px', background: '#000', border: `1px solid ${GREEN}44`, marginBottom: '24px', borderRadius: '2px', overflow: 'hidden' }}>
+        <div ref={micLevelRef} style={{ width: '0%', height: '100%', background: GREEN, transition: 'width 0.1s' }} />
+      </div>
+
+      {/* Bouton d'entrée */}
+      <Btn large color={GREEN} onClick={onEnter}>▶ ENTRER DANS LE MONDE</Btn>
+    </Screen>
+  );
+};
+
+
 const JoinScreen = ({ socket, onJoined, onBack }) => {
   const [input, setInput] = useState('');
   const [status, setStatus] = useState('');
@@ -526,7 +667,8 @@ export const LobbyMenu = ({ socket, onStart }) => {
   const [roomCode, setRoomCode] = useState(null);
   const [isHost, setIsHost] = useState(false);
 
-  const handleSolo = () => { socket?.emit('join-solo'); onStart({ mode: 'solo', code: null }); };
+  const handleSolo = () => setScreen('solo_setup');
+  const handleEnterSolo = () => { socket?.emit('join-solo'); onStart({ mode: 'solo', code: null }); };
   const handleEnterWorld = () => onStart({ mode: 'room', code: roomCode || socket?.roomCode });
 
   const handleCreateRequest = () => {
@@ -540,6 +682,7 @@ export const LobbyMenu = ({ socket, onStart }) => {
   };
 
   if (screen === 'create_loading') return <Screen><div className="waiting-dots" style={{ fontFamily: FONT, color: GREEN, fontSize: '0.6rem' }}>GÉNÉRATION...</div></Screen>;
+  if (screen === 'solo_setup') return <SoloSetupScreen socket={socket} onEnter={handleEnterSolo} onBack={() => setScreen('choice')} />;
   if (screen === 'join') return <JoinScreen socket={socket} onJoined={(c) => { setRoomCode(c); setIsHost(false); setScreen('waiting'); }} onBack={() => setScreen('choice')} />;
   if (screen === 'waiting') return <WaitingRoomScreen socket={socket} code={roomCode} isHost={isHost} onStartGame={handleEnterWorld} onBack={() => setScreen('choice')} />;
 
