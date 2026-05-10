@@ -1,28 +1,70 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 
-export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false, isLocal = true }) => {
+// Composant pour afficher du texte en 3D via une texture Canvas ultra rapide
+const CanvasText = ({ text, color, fontSize = 60, position, scale = 1 }) => {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 16;
+    return tex;
+  }, [text, color, fontSize]);
+
+  return (
+    <mesh position={position} scale={[10 * scale, 1.25 * scale, 1]}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial map={texture} transparent depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+  );
+};
+
+export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false, isLocal = true, id }) => {
   const groupRef = useRef();
-  const [video, setVideo] = useState(null);
-  const floatOffset = useRef(0);
+  const [videoMat, setVideoMat] = useState(null);
 
   // Attacher le flux vidéo à un élément HTML natif pour mapping WebGL
   useEffect(() => {
     let vid;
+    let texture;
     if (stream) {
       vid = document.createElement('video');
       vid.srcObject = stream;
       vid.crossOrigin = 'Anonymous';
       vid.playsInline = true;
-      vid.muted = isLocal;
+      vid.muted = true; // DOIT être muted pour autoplay sur Chrome/Safari
+      vid.autoplay = true;
+      
+      const handleLoadedData = () => {
+        if (!texture) {
+          texture = new THREE.VideoTexture(vid);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.format = THREE.RGBAFormat;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          setVideoMat(texture);
+        }
+      };
+      vid.addEventListener('loadeddata', handleLoadedData);
       vid.play().catch(e => console.error('GiantScreen video play err:', e));
-      setVideo(vid);
     } else {
-      setVideo(null);
+      setVideoMat(null);
     }
     return () => {
+      setVideoMat(null);
+      if (texture) {
+        texture.dispose();
+      }
       if (vid) {
         vid.pause();
         vid.srcObject = null;
@@ -42,32 +84,34 @@ export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation 
   if (!player?.cameraEnabled && !player?.micEnabled) return null;
 
   return (
-    <group ref={groupRef} position={position} rotation={rotation} scale={[scale, scale, scale]}>
+    <group 
+      ref={groupRef} 
+      position={position} 
+      rotation={rotation} 
+      scale={[scale, scale, scale]}
+      userData={{ type: 'interactable-screen', id, ownerId: player?.id }}
+    >
 
       {/* --- VIDÉO PLEIN ÉCRAN --- */}
       {/* Le plan principale : la vidéo occupe TOUT le rectangle 16x9 */}
       <mesh scale={[mirrored ? -1 : 1, 1, 1]}>
         <planeGeometry args={[16, 9]} />
-        {video ? (
-          <meshBasicMaterial side={THREE.DoubleSide}>
-            <videoTexture attach="map" args={[video]} />
-          </meshBasicMaterial>
+        {videoMat ? (
+          <meshBasicMaterial key="vid-mat" map={videoMat} side={THREE.DoubleSide} toneMapped={false} />
         ) : (
-          // Écran éteint : fond sombre + texte NO SIGNAL via HTML léger
-          <meshStandardMaterial color="#030308" metalness={1} roughness={0.1} side={THREE.DoubleSide} />
+          <meshBasicMaterial key="no-vid-mat" color="#030308" side={THREE.DoubleSide} toneMapped={false} />
         )}
       </mesh>
 
-      {/* NO SIGNAL overlay quand pas de vidéo */}
-      {!video && (
-        <Html
-          transform
-          distanceFactor={10}
+      {/* NO SIGNAL overlay quand pas de vidéo (ZÉRO LAG via CanvasText) */}
+      {!videoMat && (
+        <CanvasText
           position={[0, 0, 0.05]}
-          style={{ width: '1600px', height: '900px', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
-        >
-          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '60px', color: color, opacity: 0.3 }}>NO SIGNAL</div>
-        </Html>
+          text="AWAITING SIGNAL..."
+          color={color}
+          fontSize={60}
+          scale={1.5}
+        />
       )}
 
       {/* Scanlines très légères par-dessus la vidéo */}
@@ -76,66 +120,79 @@ export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation 
         <meshBasicMaterial color="#000000" transparent opacity={0.08} depthWrite={false} />
       </mesh>
 
-      {/* --- BORDURE NÉON --- */}
+      {/* --- BORDURE NÉON HOLOGRAPHIQUE --- */}
+      {/* Lueur de fond douce */}
       <mesh position={[0, 0, -0.05]}>
-        <planeGeometry args={[16.6, 9.6]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2.5} transparent opacity={0.35} />
+        <planeGeometry args={[16.8, 9.8]} />
+        <meshBasicMaterial color={color} transparent opacity={0.1} depthWrite={false} />
       </mesh>
-      {/* Traits fins de bordure */}
+      
+      {/* Lignes fines lumineuses externes */}
       <lineSegments position={[0, 0, 0.03]}>
-        <edgesGeometry args={[new THREE.BoxGeometry(16, 9, 0.01)]} />
-        <lineBasicMaterial color={color} />
+        <edgesGeometry args={[new THREE.PlaneGeometry(16.2, 9.2)]} />
+        <lineBasicMaterial color={color} transparent opacity={0.8} />
+      </lineSegments>
+      <lineSegments position={[0, 0, 0.04]}>
+        <edgesGeometry args={[new THREE.PlaneGeometry(16.5, 9.5)]} />
+        <lineBasicMaterial color="#ffffff" transparent opacity={0.3} />
       </lineSegments>
 
-      {/* --- HUD INFO BAR 3D SOUS L'ÉCRAN --- */}
-      <group position={[0, -5.2, 0]}>
-        {/* Barre de support principale */}
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[16, 1.2, 0.4]} />
-          <meshStandardMaterial color="#111" metalness={0.8} roughness={0.2} />
+      {/* --- HUD INFO BAR 3D MAGIQUE (AU DESSUS DE L'ÉCRAN) --- */}
+      <group position={[0, 5.8, 0]}>
+        
+        {/* Barre de verre holographique */}
+        <mesh position={[0, 0, 0.1]}>
+          <boxGeometry args={[16.5, 1.4, 0.2]} />
+          <meshPhysicalMaterial 
+            color={color} 
+            transmission={0.9} 
+            opacity={1} 
+            metalness={0.1} 
+            roughness={0.2} 
+            ior={1.5} 
+            thickness={2} 
+            transparent 
+          />
         </mesh>
 
-        {/* Bordure de la barre */}
-        <lineSegments position={[0, 0, 0.2]}>
-          <edgesGeometry args={[new THREE.BoxGeometry(16, 1.2, 0.4)]} />
-          <lineBasicMaterial color={color} />
+        {/* Aura lumineuse douce derrière la barre */}
+        <mesh position={[0, 0, 0]}>
+          <planeGeometry args={[17, 1.8]} />
+          <meshBasicMaterial color={color} transparent opacity={0.15} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+
+        {/* Cadre ultra fin tech */}
+        <lineSegments position={[0, 0, 0.21]}>
+          <edgesGeometry args={[new THREE.BoxGeometry(16.5, 1.4, 0.2)]} />
+          <lineBasicMaterial color="#ffffff" transparent opacity={0.5} />
         </lineSegments>
 
         {/* Statut Mic (Gauche) */}
-        <Text
-          position={[-7, 0, 0.22]}
-          fontSize={0.4}
+        <CanvasText
+          position={[-6, 0, 0.22]}
+          text={player?.micEnabled ? 'MIC: ON' : 'MIC: MUTED'}
           color={player?.micEnabled ? color : '#ff00ff'}
-          anchorX="left"
-          anchorY="middle"
-          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
-        >
-          {player?.micEnabled ? 'MIC: ON' : 'MIC: MUTED'}
-        </Text>
+          fontSize={60}
+          scale={0.5}
+        />
 
         {/* Nom du Joueur (Centre) */}
-        <Text
+        <CanvasText
           position={[0, 0, 0.22]}
-          fontSize={0.5}
+          text={player?.name ? player.name.toUpperCase() : (player?.id?.slice(0, 8) || 'AGENT')}
           color={color}
-          anchorX="center"
-          anchorY="middle"
-          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
-        >
-          {player?.name ? player.name.toUpperCase() : (player?.id?.slice(0, 8) || 'AGENT')}
-        </Text>
+          fontSize={80}
+          scale={0.8}
+        />
 
         {/* Statut Caméra (Droite) */}
-        <Text
-          position={[7, 0, 0.22]}
-          fontSize={0.4}
+        <CanvasText
+          position={[6, 0, 0.22]}
+          text={player?.cameraEnabled ? 'CAM: LIVE' : 'CAM: OFF'}
           color={player?.cameraEnabled ? color : '#555'}
-          anchorX="right"
-          anchorY="middle"
-          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
-        >
-          {player?.cameraEnabled ? 'CAM: LIVE' : 'CAM: OFF'}
-        </Text>
+          fontSize={60}
+          scale={0.5}
+        />
       </group>
 
       {/* Lumière émise par l'écran */}

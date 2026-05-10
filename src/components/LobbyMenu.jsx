@@ -1,724 +1,656 @@
-import { useState, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Wifi, Users, Shield, Copy, Check, ArrowLeft, Gamepad2, Mic, MicOff, Video, VideoOff, WifiOff, Monitor, Settings } from 'lucide-react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useGameStore } from '../store/useGameStore';
-import { initializeSocket } from './SocketManager';
 import { IsometricLobby } from './IsometricLobby';
+import { SkinViewer3D } from './SkinViewer3D';
 
-const FONT = "'Press Start 2P', monospace";
 const GREEN = '#a8ff3e';
-const PINK = '#ff6eb4';
-const CYAN = '#00f3ff';
-const DARK = '#040804';
+const PINK = '#ff00ff';
+const CYAN = '#00d8ff';
+const FONT = "'Press Start 2P', cursive";
 
-// ─── Animations CSS injectées ───
+const AVAILABLE_SKINS = [
+  { id: 'criminalMaleA', label: 'CRIMINAL', emoji: '🕵️', file: '/assets/kenney/criminalMaleA.png' },
+  { id: 'cyborgFemaleA', label: 'CYBORG', emoji: '🤖', file: '/assets/kenney/cyborgFemaleA.png' },
+  { id: 'skaterFemaleA', label: 'SKATER_F', emoji: '🛹', file: '/assets/kenney/skaterFemaleA.png' },
+  { id: 'skaterMaleA', label: 'SKATER_M', emoji: '🛹', file: '/assets/kenney/skaterMaleA.png' },
+];
+
+// ── Scanlines + animations globales ──
 const LobbyStyles = () => (
   <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    @keyframes grid-move {
+      from { background-position: 0 0; }
+      to   { background-position: 0 60px; }
+    }
+    @keyframes flicker {
+      0%, 95%, 100% { opacity: 1; }
+      96% { opacity: 0.8; }
+      97% { opacity: 1; }
+      98% { opacity: 0.6; }
+    }
     @keyframes pulse-border {
-      0% { box-shadow: 0 0 10px rgba(168,255,62,0.2), inset 0 0 10px rgba(168,255,62,0.1); }
-      50% { box-shadow: 0 0 25px rgba(168,255,62,0.6), inset 0 0 20px rgba(168,255,62,0.3); }
-      100% { box-shadow: 0 0 10px rgba(168,255,62,0.2), inset 0 0 10px rgba(168,255,62,0.1); }
+      0%, 100% { box-shadow: 0 0 6px 1px currentColor; }
+      50%       { box-shadow: 0 0 18px 4px currentColor; }
     }
-    @keyframes pulse-border-pink {
-      0% { box-shadow: 0 0 10px rgba(255,110,180,0.2), inset 0 0 10px rgba(255,110,180,0.1); }
-      50% { box-shadow: 0 0 25px rgba(255,110,180,0.6), inset 0 0 20px rgba(255,110,180,0.3); }
-      100% { box-shadow: 0 0 10px rgba(255,110,180,0.2), inset 0 0 10px rgba(255,110,180,0.1); }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
     }
-    @keyframes scanline-anim {
-      0% { transform: translateY(0); }
-      100% { transform: translateY(4px); }
+    @keyframes bounce-char {
+      0%, 100% { transform: translateY(0px) scaleX(-1); }
+      50%       { transform: translateY(-8px) scaleX(-1); }
     }
-    @keyframes float-avatar {
-      0% { transform: translateY(0px); }
-      50% { transform: translateY(-6px); }
-      100% { transform: translateY(0px); }
+    @keyframes shadow-pulse {
+      0%, 100% { opacity: 0.4; transform: scaleX(1); }
+      50%       { opacity: 0.1; transform: scaleX(0.6); }
     }
-    @keyframes blink-dots {
-      0% { content: ''; }
-      33% { content: '.'; }
-      66% { content: '..'; }
-      100% { content: '...'; }
+    @keyframes scanline-scroll {
+      from { background-position: 0 0; }
+      to   { background-position: 0 100px; }
+    }
+    .scanlines {
+      position: absolute; inset: 0; pointer-events: none; z-index: 5;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0.07) 0px,
+        rgba(0,0,0,0.07) 1px,
+        transparent 1px,
+        transparent 4px
+      );
+      animation: scanline-scroll 8s linear infinite;
+    }
+    .btn-pixel-lobby {
+      cursor: pointer;
+      transition: all 0.08s steps(2);
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 15px;
+      padding: 18px 24px;
+      margin-bottom: 14px;
+      position: relative;
+      font-family: 'Press Start 2P', cursive;
+    }
+    .btn-pixel-lobby:hover {
+      transform: translate(-3px, -3px);
+      filter: brightness(1.2);
+    }
+    .btn-pixel-lobby:active {
+      transform: translate(0, 0);
     }
     .waiting-dots::after {
       content: '';
-      animation: blink-dots 1.5s infinite steps(1);
+      animation: dots 1.5s steps(4, end) infinite;
     }
-    .slot-filled {
-      animation: pulse-border 3s infinite;
+    @keyframes dots {
+      0%,20% { content: ''; }
+      40%     { content: '.'; }
+      60%     { content: '..'; }
+      80%     { content: '...'; }
     }
-    .slot-filled-pink {
-      animation: pulse-border-pink 3s infinite;
+    .skin-card {
+      cursor: pointer;
+      transition: transform 0.08s steps(2);
     }
-    .avatar-float {
-      animation: float-avatar 4s ease-in-out infinite;
-    }
-    .scanlines-overlay {
-      background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 4px);
-      animation: scanline-anim 1s linear infinite;
-    }
-    
-    /* Scrollbar personnalisée */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(0, 10, 0, 0.8);
-      border-left: 1px solid rgba(168, 255, 62, 0.1);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(168, 255, 62, 0.4);
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(168, 255, 62, 0.8);
-    }
+    .skin-card:hover { transform: translate(-2px,-2px) scale(1.04); }
+    .skin-card.selected { outline: 3px solid; outline-offset: 3px; }
   `}</style>
 );
 
-// ─── Écran de base ───
-const Screen = ({ children, onBack, wide = false }) => (
+// ── Coin pixel-art ──
+const PixelCorner = ({ color = GREEN, size = 5 }) => (
+  <>
+    <div style={{ position: 'absolute', top: 0, left: 0, width: size * 3, height: size, background: color }} />
+    <div style={{ position: 'absolute', top: 0, left: 0, width: size, height: size * 3, background: color }} />
+    <div style={{ position: 'absolute', top: 0, right: 0, width: size * 3, height: size, background: color }} />
+    <div style={{ position: 'absolute', top: 0, right: 0, width: size, height: size * 3, background: color }} />
+    <div style={{ position: 'absolute', bottom: 0, left: 0, width: size * 3, height: size, background: color }} />
+    <div style={{ position: 'absolute', bottom: 0, left: 0, width: size, height: size * 3, background: color }} />
+    <div style={{ position: 'absolute', bottom: 0, right: 0, width: size * 3, height: size, background: color }} />
+    <div style={{ position: 'absolute', bottom: 0, right: 0, width: size, height: size * 3, background: color }} />
+  </>
+);
+
+// SkinViewer2D supprimé — remplacé par SkinViewer3D (composant isolé)
+
+// ── Chat de Salon stylé ──
+const LobbyChat = ({ socket }) => {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleMessage = (msg) => {
+      setMessages(prev => [...prev, msg].slice(-40));
+    };
+    socket.on('lobby-chat-message', handleMessage);
+    return () => socket.off('lobby-chat-message', handleMessage);
+  }, [socket]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = () => {
+    if (!input.trim() || !socket) return;
+    const msg = { text: input, senderId: socket.id };
+    socket.emit('lobby-chat-message', msg);
+    // Pas d'echo local : le serveur renvoie le message à tout le monde y compris l'expéditeur
+    setInput('');
+  };
+
+  return (
+    <div style={{ 
+      display: 'flex', flexDirection: 'column', 
+      background: 'rgba(0,15,0,0.75)', 
+      border: `1px solid ${CYAN}`,
+      height: '280px',
+      marginTop: '12px',
+      boxShadow: `0 0 12px ${CYAN}22`
+    }}>
+      <div style={{ 
+        background: `${CYAN}22`, padding: '5px 10px', 
+        fontFamily: FONT, fontSize: '0.25rem', color: CYAN,
+        borderBottom: `1px solid ${CYAN}44`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <span>{'>'} CANAL_CHAT_SECURISE</span>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          <div style={{ width: 6, height: 6, background: CYAN, borderRadius: '50%', opacity: 0.7 }} />
+          <div style={{ width: 6, height: 6, background: PINK, borderRadius: '50%', opacity: 0.5 }} />
+        </div>
+      </div>
+      
+      <div style={{ 
+        flex: 1, overflowY: 'auto', padding: '15px',
+        background: 'linear-gradient(180deg, rgba(0,216,255,0.05) 0%, transparent 100%)',
+        scrollbarWidth: 'thin',
+        scrollbarColor: `${CYAN} transparent`
+      }}>
+        {messages.length === 0 && (
+          <div style={{ 
+            fontFamily: FONT, fontSize: '0.28rem', color: `${CYAN}33`, 
+            textAlign: 'center', marginTop: '70px',
+            letterSpacing: '2px'
+          }}>
+            [ EN_ATTENTE_DE_MESSAGES ]
+          </div>
+        )}
+        {messages.map((m, i) => {
+          const isMe = m.senderId === socket.id;
+          return (
+            <div key={i} style={{ 
+              marginBottom: '8px', 
+              fontFamily: FONT, 
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: isMe ? 'flex-end' : 'flex-start'
+            }}>
+              <div style={{ 
+                fontSize: '0.22rem', 
+                color: isMe ? GREEN : PINK,
+                marginBottom: '3px',
+                opacity: 0.7
+              }}>
+                {isMe ? 'VOUS' : `AGENT_${m.senderId?.slice(0, 4)}`}
+              </div>
+              <div style={{ 
+                background: isMe ? `${GREEN}18` : `${PINK}12`,
+                border: `1px solid ${isMe ? GREEN : PINK}33`,
+                padding: '6px 10px',
+                borderRadius: isMe ? '10px 2px 10px 10px' : '2px 10px 10px 10px',
+                fontSize: '0.32rem',
+                color: '#e8ffe8',
+                maxWidth: '88%',
+                wordBreak: 'break-word',
+              }}>
+                {m.text}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={chatEndRef} />
+      </div>
+
+      <div style={{ display: 'flex', borderTop: `1px solid ${CYAN}33`, background: 'rgba(0,0,0,0.5)' }}>
+        <input 
+          value={input} 
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          placeholder="> TAPER_MESSAGE..."
+          style={{ 
+            flex: 1, background: 'transparent', border: 'none', 
+            color: CYAN, fontFamily: FONT, fontSize: '0.28rem',
+            padding: '10px 12px', outline: 'none' 
+          }}
+        />
+        <button onClick={sendMessage} style={{ 
+          background: `${CYAN}22`, color: CYAN, border: 'none',
+          borderLeft: `1px solid ${CYAN}44`,
+          fontFamily: FONT, fontSize: '0.28rem', padding: '0 14px',
+          cursor: 'pointer', letterSpacing: '1px'
+        }}>
+          ENVOYER
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Cartes de sélection de skin ──
+const SkinSelector = ({ current, onChange }) => {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: '8px',
+      marginTop: '14px',
+    }}>
+      {AVAILABLE_SKINS.map(skin => {
+        const isSelected = skin.id === current;
+        return (
+          <div
+            key={skin.id}
+            className={`skin-card ${isSelected ? 'selected' : ''}`}
+            onClick={() => onChange(skin.id)}
+            style={{
+              background: isSelected ? `rgba(168,255,62,0.12)` : 'rgba(0,0,0,0.6)',
+              border: `2px solid ${isSelected ? GREEN : '#333'}`,
+              outlineColor: isSelected ? GREEN : 'transparent',
+              padding: '8px',
+              display: 'flex', alignItems: 'center', gap: '8px',
+            }}
+          >
+            <img
+              src={skin.file}
+              alt={skin.label}
+              style={{
+                height: '32px', width: 'auto',
+                imageRendering: 'pixelated',
+                filter: isSelected ? `drop-shadow(0 0 4px ${GREEN})` : 'grayscale(0.5)',
+              }}
+            />
+            <div style={{
+              fontFamily: FONT, fontSize: '0.35rem',
+              color: isSelected ? GREEN : '#666',
+              textAlign: 'center',
+              width: '100%',
+              letterSpacing: '1px'
+            }}>
+              {skin.label.toUpperCase()}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ── Écran principal du lobby ──
+const ChoiceScreen = ({ onSolo, onCreate, onJoin }) => {
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setTick(p => p + 1), 500);
+    return () => clearInterval(t);
+  }, []);
+
+  const currentSkin = localPlayer?.skin || 'criminalMaleA';
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 500,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden',
+    }}>
+      <LobbyStyles />
+
+      {/* ── Fond : même style que la page d'accueil ── */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+        <img
+          src="/assets/wp12850307.gif"
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center',
+            filter: 'brightness(1.4) contrast(1.05) saturate(1.2)',
+          }}
+        />
+        {/* Overlay sombre transparent comme la page d'accueil */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(90deg, rgba(4,8,4,0.96) 0%, rgba(4,8,4,0.85) 28%, rgba(4,8,4,0.3) 48%, rgba(4,8,4,0.02) 65%, rgba(4,8,4,0) 100%)',
+        }} />
+        {/* Scanlines subtiles */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0px, rgba(0,0,0,0.06) 1px, transparent 1px, transparent 3px)',
+          pointerEvents: 'none',
+        }} />
+      </div>
+
+      {/* Scanlines sur tout l'écran */}
+      <div className="scanlines" />
+
+      {/* ── Layout principal ── */}
+      <div style={{
+        position: 'relative', zIndex: 10,
+        width: '90%', maxWidth: '960px',
+        display: 'flex', gap: '28px',
+        alignItems: 'flex-start',
+      }}>
+
+        {/* ── Colonne gauche : Visualiseur de skin ── */}
+        <div style={{
+          width: '320px', flexShrink: 0,
+          background: 'rgba(2, 8, 2, 0.82)',
+          backdropFilter: 'blur(4px)',
+          border: `2px solid ${GREEN}`,
+          position: 'relative',
+          padding: '0 0 16px 0',
+          overflow: 'hidden',
+        }}>
+          <PixelCorner color={GREEN} size={5} />
+
+          {/* En-tête */}
+          <div style={{
+            fontFamily: FONT, fontSize: '0.3rem',
+            color: CYAN, padding: '12px 16px',
+            borderBottom: `1px solid rgba(168,255,62,0.2)`,
+            marginBottom: '0',
+          }}>
+            {'>'} AGENT_VIEW_3D
+          </div>
+
+          {/* Vrai visualiseur 3D interactif */}
+          <SkinViewer3D key={currentSkin} skin={currentSkin} />
+
+          {/* Séparateur */}
+          <div style={{
+            height: 2, margin: '0',
+            background: `repeating-linear-gradient(90deg, ${GREEN} 0px, ${GREEN} 6px, ${PINK} 6px, ${PINK} 12px, transparent 12px, transparent 18px)`,
+            boxShadow: `0 0 8px ${GREEN}66`,
+          }} />
+
+          {/* Label agent sélectionné */}
+          <div style={{ padding: '12px 16px 4px' }}>
+            <div style={{
+              fontFamily: FONT, fontSize: '0.28rem',
+              color: '#555', marginBottom: '4px',
+            }}>IDENTITÉ_AGENT :</div>
+            <div style={{
+              fontFamily: FONT, fontSize: '0.5rem',
+              color: GREEN,
+              textShadow: `0 0 10px ${GREEN}`,
+            }}>
+              {AVAILABLE_SKINS.find(s => s.id === currentSkin)?.label || 'AGENT'}
+            </div>
+          </div>
+
+          {/* Sélecteur de skins */}
+          <div style={{ padding: '0 16px' }}>
+            <SkinSelector
+              current={currentSkin}
+              onChange={(id) => setLocalPlayerStatus({ skin: id })}
+            />
+          </div>
+        </div>
+
+        {/* ── Colonne droite : Titre + Modes ── */}
+        <div style={{ flex: 1 }}>
+
+          {/* Titre VANTAGE ALPHA */}
+          <div style={{ marginBottom: '28px' }}>
+            <div style={{
+              fontFamily: FONT, fontSize: '0.35rem',
+              color: PINK, letterSpacing: '4px', marginBottom: '8px',
+              textShadow: `0 0 10px ${PINK}`,
+            }}>
+              [ MISSION_TERMINAL_V.2 ]
+            </div>
+            <h1 style={{
+              fontFamily: FONT,
+              fontSize: 'clamp(1.6rem, 4vw, 3rem)',
+              color: GREEN,
+              margin: '0 0 4px',
+              letterSpacing: '4px',
+              textShadow: `4px 4px 0 #000, 0 0 30px ${GREEN}88`,
+              lineHeight: 1.1,
+            }}>
+              VANTAGE
+            </h1>
+            <h1 style={{
+              fontFamily: FONT,
+              fontSize: 'clamp(1.6rem, 4vw, 3rem)',
+              color: PINK,
+              margin: 0,
+              letterSpacing: '4px',
+              textShadow: `4px 4px 0 #000, 0 0 30px ${PINK}88`,
+              lineHeight: 1.1,
+            }}>
+              ALPHA{tick % 2 === 0 ? '_' : ' '}
+            </h1>
+            <div style={{
+              fontFamily: FONT, fontSize: '0.3rem',
+              color: 'rgba(255,255,255,0.4)',
+              marginTop: '10px', letterSpacing: '2px',
+            }}>
+              OPEN WORLD · MULTIPLAYER
+            </div>
+          </div>
+
+          {/* Séparateur bicolore */}
+          <div style={{
+            width: '100%', height: 2, marginBottom: '24px',
+            background: `repeating-linear-gradient(90deg, ${GREEN} 0px, ${GREEN} 8px, ${PINK} 8px, ${PINK} 16px, transparent 16px, transparent 22px)`,
+          }} />
+
+          {/* ── Boutons de mode ── */}
+          <div style={{
+            fontFamily: FONT, fontSize: '0.3rem',
+            color: `${GREEN}aa`, marginBottom: '16px', letterSpacing: '2px',
+          }}>
+            {'>'} SÉLECTION_DU_MODE
+          </div>
+
+          {[
+            { icon: '▣', label: 'MODE_SOLO', sub: 'SIMULATION PRIVÉE', color: GREEN, action: onSolo, key: 'S' },
+            { icon: '◈', label: 'CRÉER_NODE', sub: 'MULTIJOUEUR_LOCAL', color: CYAN, action: onCreate, key: 'C' },
+            { icon: '⇢', label: 'JOIN_NODE', sub: 'ACCÈS_À_DISTANCE', color: PINK, action: onJoin, key: 'R' },
+          ].map((m) => (
+            <div
+              key={m.label}
+              onClick={m.action}
+              className="btn-pixel-lobby"
+              style={{
+                background: 'rgba(0,0,0,0.72)',
+                backdropFilter: 'blur(6px)',
+                border: `2px solid ${m.color}`,
+                color: m.color,
+                boxShadow: `inset 0 0 0 1px ${m.color}22, 0 0 0px 0px ${m.color}00`,
+              }}
+            >
+              <span style={{ fontSize: '1.3rem' }}>{m.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: FONT, fontSize: '0.48rem', marginBottom: '4px' }}>{m.label}</div>
+                <div style={{ fontFamily: FONT, fontSize: '0.22rem', opacity: 0.6 }}>{m.sub}</div>
+              </div>
+              <div style={{
+                fontFamily: FONT, fontSize: '0.28rem',
+                border: `2px solid ${m.color}`,
+                padding: '5px 8px',
+                background: `${m.color}18`,
+              }}>
+                [{m.key}]
+              </div>
+            </div>
+          ))}
+
+          {/* Footer */}
+          <div style={{
+            fontFamily: FONT, fontSize: '0.25rem',
+            color: 'rgba(255,255,255,0.2)',
+            marginTop: '20px',
+          }}>
+            © 2025 VANTAGE SYSTEMS · ALL_RIGHTS_RESERVED
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Wrapper écran générique ──
+const Screen = ({ children, onBack, color = '#fff', wide = false }) => (
   <div style={{
-    position: 'absolute', inset: 0, zIndex: 300,
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center',
-    background: 'rgba(2,4,2,0.98)',
-    padding: '20px',
+    position: 'absolute', inset: 0, zIndex: 600,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   }}>
     <LobbyStyles />
+
+    {/* GIF de fond pour les sous-écrans aussi */}
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <img src="/assets/wp12850307.gif" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.3) saturate(1.2)' }} />
+    </div>
+    <div className="scanlines" />
+
     <div style={{
-      position: 'absolute', inset: 0, pointerEvents: 'none',
-      background: 'linear-gradient(rgba(168,255,62,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(168,255,62,0.03) 1px, transparent 1px)',
-      backgroundSize: '40px 40px',
-      transform: 'perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-200px)',
-      opacity: 0.5,
-    }} />
-    <div className="scanlines-overlay" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      maxWidth: wide ? '1800px' : '420px',
-      padding: wide ? '40px' : '30px',
-      background: 'rgba(0,10,0,0.85)',
-      backdropFilter: 'blur(4px)',
-      transition: 'all 0.3s ease',
-      height: wide ? '95vh' : 'auto',
-      maxHeight: '98vh',
-      overflowY: 'auto',
-      display: 'flex',
-      flexDirection: 'column'
+      position: 'relative', zIndex: 10,
+      width: '100%', maxWidth: wide ? '960px' : '560px',
+      background: 'rgba(0,4,0,0.88)',
+      backdropFilter: 'blur(8px)',
+      border: `2px solid ${color}`,
+      padding: '40px',
+      display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{
-        fontFamily: FONT, fontSize: 'clamp(0.4rem, 1.5vw, 0.6rem)', color: GREEN,
-        letterSpacing: '2px', marginBottom: '20px',
-        borderBottom: `1px solid ${GREEN}33`, paddingBottom: '16px',
-        display: 'flex', justifyContent: 'space-between'
-      }}>
-        <span>VANTAGE ALPHA &gt; ESCUADE</span>
-        <span style={{ color: PINK }}>v0.9.5_TACTICAL</span>
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        {children}
-      </div>
+      <PixelCorner color={color} size={6} />
+      {children}
       {onBack && (
         <button onClick={onBack} style={{
-          fontFamily: FONT, fontSize: '0.38rem',
-          color: 'rgba(255,255,255,0.3)',
+          fontFamily: FONT, fontSize: '0.28rem', color: '#555',
           background: 'transparent', border: 'none',
           cursor: 'pointer', marginTop: '20px',
-          letterSpacing: '1px', textTransform: 'uppercase',
-          width: '100%', textAlign: 'left'
+          display: 'block', width: '100%', textAlign: 'center',
         }}>
-          [ Echap ] Retour
+          [ ESC ] RETOUR AU MENU
         </button>
       )}
     </div>
   </div>
 );
 
-// ─── Bouton Pixel ───
-const Btn = ({ children, onClick, color = GREEN, icon = '', large = false, disabled = false }) => {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={!disabled ? onClick : undefined}
-      onMouseEnter={() => !disabled && setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-        width: '100%', padding: large ? '18px' : '12px 16px',
-        fontFamily: FONT, fontSize: large ? '0.6rem' : '0.45rem', letterSpacing: '2px',
-        textTransform: 'uppercase',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        border: `2px solid ${disabled ? '#444' : color}`,
-        color: disabled ? '#444' : (hover ? '#000' : color),
-        background: disabled ? 'transparent' : (hover ? color : 'rgba(0,0,0,0.5)'),
-        boxShadow: disabled ? 'none' : (hover ? `0 0 20px ${color}88` : `inset -2px -2px 0 ${color}33`),
-        transition: 'all 0.1s',
-        opacity: disabled ? 0.4 : 1,
-      }}
-    >
-      {icon && <span>{icon}</span>}
-      {children}
-    </button>
-  );
-};
-
-const ChoiceScreen = ({ onSolo, onCreate, onJoin }) => (
-  <Screen>
-    <div style={{ fontFamily: FONT, fontSize: '0.7rem', color: '#fff', marginBottom: '32px', textAlign: 'center' }}>
-      DÉPLOIEMENT
-    </div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Btn onClick={onSolo} icon="▶" color={GREEN}>Mode Solo</Btn>
-      <Btn onClick={onCreate} icon="+" color={GREEN}>Créer Escouade</Btn>
-      <Btn onClick={onJoin} icon="→" color={PINK} >Rejoindre Escouade</Btn>
-    </div>
-  </Screen>
-);
-
-// ─── Écran de configuration Solo (Cam/Mic avant d'entrer) ───
-const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
-  const localPlayer = useGameStore(state => state.localPlayer);
-  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
-  const setLocalStream = useGameStore(state => state.setLocalStream);
-
-  const [audioDevices, setAudioDevices] = useState([]);
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [selectedMic, setSelectedMic] = useState('');
-  const [selectedCam, setSelectedCam] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const micLevelRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const animRef = useRef(null);
-
-  // Enumération des périphériques
-  const fetchDevices = () => {
-    navigator.mediaDevices?.enumerateDevices().then(devices => {
-      const audios = devices.filter(d => d.kind === 'audioinput');
-      const videos = devices.filter(d => d.kind === 'videoinput');
-      setAudioDevices(audios);
-      setVideoDevices(videos);
-      
-      // Si on a les permissions (label non vide), on peut auto-sélectionner le premier
-      if (audios.length > 0 && audios[0].label) setSelectedMic(audios[0].deviceId);
-      if (videos.length > 0 && videos[0].label) setSelectedCam(videos[0].deviceId);
-    }).catch(console.error);
-  };
-
-  useEffect(() => {
-    fetchDevices();
-  }, []);
-
-  // Démarrer/stopper le flux selon les toggles
-  useEffect(() => {
-    let vid;
-    if (localPlayer?.cameraEnabled || localPlayer?.micEnabled) {
-      const constraints = {
-        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: selectedMic } : true) : false,
-        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: selectedCam } : true) : false,
-      };
-      navigator.mediaDevices?.getUserMedia(constraints).then(stream => {
-        streamRef.current = stream;
-        setLocalStream(stream);
-        
-        // Rafraîchir les périphériques maintenant qu'on a la permission
-        fetchDevices();
-
-        if (videoRef.current && localPlayer?.cameraEnabled) videoRef.current.srcObject = stream;
-        if (localPlayer?.micEnabled) {
-          audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-          const source = audioContextRef.current.createMediaStreamSource(stream);
-          analyserRef.current = audioContextRef.current.createAnalyser();
-          analyserRef.current.fftSize = 256;
-          source.connect(analyserRef.current);
-          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-          const update = () => {
-            if (!analyserRef.current) return;
-            analyserRef.current.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-            const level = Math.min(100, Math.round((sum / dataArray.length) * 1.5));
-            if (micLevelRef.current) micLevelRef.current.style.width = `${level}%`;
-            animRef.current = requestAnimationFrame(update);
-          };
-          update();
-        }
-      }).catch(err => {
-        console.error('Media error:', err);
-        if (err.name === 'NotReadableError') {
-          setErrorMsg("⚠️ Caméra/Micro déjà utilisé par une autre application !");
-        } else if (err.name === 'NotAllowedError') {
-          setErrorMsg("⚠️ Permission refusée pour la caméra/micro !");
-        } else {
-          setErrorMsg("⚠️ Impossible d'accéder à la caméra/micro.");
-        }
-        setLocalPlayerStatus({ micEnabled: false, cameraEnabled: false });
-      });
-    } else {
-      // Couper le flux si rien n'est actif
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-        setLocalStream(null);
-      }
-    }
-    return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(console.error);
-        audioContextRef.current = null;
-      }
-    };
-  }, [localPlayer?.cameraEnabled, localPlayer?.micEnabled, selectedMic, selectedCam]);
-
-  const toggleCamera = () => setLocalPlayerStatus({ cameraEnabled: !localPlayer?.cameraEnabled });
-  const toggleMic = () => setLocalPlayerStatus({ micEnabled: !localPlayer?.micEnabled });
-
-  return (
-    <Screen onBack={onBack}>
-      <div style={{ fontFamily: FONT, fontSize: '0.6rem', color: GREEN, marginBottom: '24px', textAlign: 'center' }}>CONFIGURATION SOLO</div>
-
-      {/* Prévisualisation caméra */}
-      <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#222'}`, position: 'relative', marginBottom: '16px', overflow: 'hidden' }}>
-        {localPlayer?.cameraEnabled
-          ? <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-          : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333', flexDirection: 'column', gap: '12px' }}>
-              <VideoOff size={40} />
-              <span style={{ fontFamily: FONT, fontSize: '0.3rem', color: '#444' }}>CAMÉRA DÉSACTIVÉE</span>
-            </div>
-        }
-      </div>
-
-      {/* Message d'erreur éventuel */}
-      {errorMsg && (
-        <div style={{ color: PINK, fontFamily: FONT, fontSize: '0.4rem', textAlign: 'center', marginBottom: '16px', lineHeight: '1.5' }}>
-          {errorMsg}
-        </div>
-      )}
-
-      {/* Contrôles Cam */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' }}>
-        <button onClick={toggleCamera} style={{
-          padding: '10px 16px', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#333'}`,
-          background: localPlayer?.cameraEnabled ? 'rgba(255,110,180,0.15)' : '#000',
-          color: localPlayer?.cameraEnabled ? PINK : '#555', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem', flexShrink: 0
-        }}>
-          {localPlayer?.cameraEnabled ? '📷 CAM ACTIF' : '📷 CAM OFF'}
-        </button>
-        <select value={selectedCam} onChange={e => setSelectedCam(e.target.value)} style={{
-          flex: 1, background: '#000', border: `1px solid ${PINK}44`, color: PINK, fontFamily: FONT, fontSize: '0.3rem', padding: '8px', minWidth: 0
-        }}>
-          {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Caméra'}</option>)}
-        </select>
-      </div>
-
-      {/* Contrôles Mic + Niveau */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center' }}>
-        <button onClick={toggleMic} style={{
-          padding: '10px 16px', border: `2px solid ${localPlayer?.micEnabled ? GREEN : '#333'}`,
-          background: localPlayer?.micEnabled ? 'rgba(168,255,62,0.15)' : '#000',
-          color: localPlayer?.micEnabled ? GREEN : '#555', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem', flexShrink: 0
-        }}>
-          {localPlayer?.micEnabled ? '🎤 MIC ACTIF' : '🎤 MIC OFF'}
-        </button>
-        <select value={selectedMic} onChange={e => setSelectedMic(e.target.value)} style={{
-          flex: 1, background: '#000', border: `1px solid ${GREEN}44`, color: GREEN, fontFamily: FONT, fontSize: '0.3rem', padding: '8px', minWidth: 0
-        }}>
-          {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>)}
-        </select>
-      </div>
-      <div style={{ height: '8px', background: '#000', border: `1px solid ${GREEN}44`, marginBottom: '16px', borderRadius: '2px', overflow: 'hidden' }}>
-        <div ref={micLevelRef} style={{ width: '0%', height: '100%', background: GREEN, transition: 'width 0.1s' }} />
-      </div>
-
-      {/* Choix du Skin */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', alignItems: 'center' }}>
-        <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: '#fff', width: '100px' }}>SKIN :</div>
-        <button 
-          onClick={() => setLocalPlayerStatus({ skin: localPlayer?.skin === 'sphere' ? 'human' : 'sphere' })}
-          style={{
-            flex: 1, padding: '10px', border: `2px solid #3498db`,
-            background: 'rgba(52, 152, 219, 0.15)', color: '#3498db',
-            cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
-          }}>
-          {localPlayer?.skin === 'human' ? '👦 HUMAIN 2D' : '🔵 SPHÈRE 3D'}
-        </button>
-      </div>
-
-      {/* Bouton d'entrée */}
-      <Btn large color={GREEN} onClick={onEnter}>▶ ENTRER DANS LE MONDE</Btn>
-    </Screen>
-  );
-};
-
-
 const JoinScreen = ({ socket, onJoined, onBack }) => {
-  const [input, setInput] = useState('');
-  const [status, setStatus] = useState('');
-  const [loading, setLoading] = useState(false);
-
+  const [code, setCode] = useState('');
   const handleJoin = () => {
-    if (input.length < 6) { setStatus('Code invalide.'); return; }
-    setLoading(true);
-    socket.emit('join-room', input.toUpperCase());
+    if (!code || !socket) return;
+    socket.emit('join-room', code);
+    socket.once('room-joined', ({ code: joinedCode }) => onJoined(joinedCode));
   };
-
-  useEffect(() => {
-    if (!socket) return;
-    const handleRoomJoined = ({ code }) => onJoined(code);
-    const handleError = (msg) => { setStatus(msg); setLoading(false); };
-    socket.once('room-joined', handleRoomJoined);
-    socket.once('room-error', handleError);
-    return () => { socket.off('room-joined', handleRoomJoined); socket.off('room-error', handleError); };
-  }, [socket, onJoined]);
-
   return (
-    <Screen onBack={onBack}>
-      <div style={{ fontFamily: FONT, fontSize: '0.6rem', color: PINK, marginBottom: '24px', textAlign: 'center' }}>REJOINDRE</div>
+    <Screen onBack={onBack} color={PINK}>
+      <h2 style={{ fontFamily: FONT, color: PINK, fontSize: '0.6rem', marginBottom: '24px' }}>REJOINDRE_NODE</h2>
       <input
-        value={input}
-        onChange={e => setInput(e.target.value.toUpperCase().slice(0, 6))}
-        placeholder="CODE"
-        maxLength={6}
-        style={{
-          width: '100%', padding: '16px', fontFamily: FONT, fontSize: '1.2rem',
-          letterSpacing: '10px', textAlign: 'center', color: PINK, background: '#000',
-          border: `2px solid ${PINK}`, outline: 'none', marginBottom: '20px'
-        }}
+        value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+        placeholder="CODE_SALON"
+        style={{ width: '100%', background: '#000', border: `2px solid ${PINK}`, color: '#fff', padding: '14px', fontFamily: FONT, marginBottom: '20px', textAlign: 'center', fontSize: '0.5rem', letterSpacing: '4px' }}
       />
-      {status && <div style={{ color: PINK, fontSize: '0.35rem', marginBottom: '15px' }}>{status}</div>}
-      <Btn onClick={handleJoin} color={PINK} icon="⚡">{loading ? 'Connexion...' : 'Connecter'}</Btn>
+      <button onClick={handleJoin} className="btn-pixel-lobby" style={{ width: '100%', background: PINK, color: '#000', border: 'none', justifyContent: 'center' }}>
+        <div style={{ fontFamily: FONT, fontSize: '0.45rem' }}>CONNEXION</div>
+      </button>
     </Screen>
   );
 };
 
-const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
+const WaitingRoomScreen = ({ socket, code, isHost, onBack }) => {
   const players = useGameStore(state => state.players);
-  const localPlayer = useGameStore(state => state.localPlayer);
-  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
-  const setLocalStream = useGameStore(state => state.setLocalStream);
-  const isStarting = useGameStore(state => state.isStarting);
   const setIsStarting = useGameStore(state => state.setIsStarting);
   const setIsGameStarted = useGameStore(state => state.setIsGameStarted);
   const playerCount = Object.keys(players || {}).length;
 
-  const [copied, setCopied] = useState(false);
-  const [wifiLevel, setWifiLevel] = useState(100);
-  const [leftWidth, setLeftWidth] = useState(72);
-
-  // --- MEDIA STATES ---
-  const [audioDevices, setAudioDevices] = useState([]);
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [selectedMic, setSelectedMic] = useState('');
-  const [selectedCam, setSelectedCam] = useState('');
-  const [loopback, setLoopback] = useState(false);
-
-  const videoRef = useRef(null);
-  const audioRef = useRef(null); // Ref pour le retour audio
-  const micLevelRef = useRef(null); // Ref directe pour éviter le lag (re-render)
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const streamRef = useRef(null);
-  const animRef = useRef(null);
-
-  // Enumeration des périphériques
-  const fetchDevices = () => {
-    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-      navigator.mediaDevices.enumerateDevices().then(devices => {
-        const audios = devices.filter(d => d.kind === 'audioinput');
-        const videos = devices.filter(d => d.kind === 'videoinput');
-        setAudioDevices(audios);
-        setVideoDevices(videos);
-        if (audios.length > 0 && audios[0].label) setSelectedMic(audios[0].deviceId);
-        if (videos.length > 0 && videos[0].label) setSelectedCam(videos[0].deviceId);
-      }).catch(err => console.error("Enumerate devices error:", err));
-    }
-  };
-
-  useEffect(() => {
-    fetchDevices();
-  }, []);
-
-  // Gestion du flux média pour le test
-  useEffect(() => {
-    if ((localPlayer?.cameraEnabled || localPlayer?.micEnabled) && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      const constraints = {
-        audio: localPlayer?.micEnabled ? (selectedMic ? { deviceId: selectedMic } : true) : false,
-        video: localPlayer?.cameraEnabled ? (selectedCam ? { deviceId: selectedCam } : true) : false,
-      };
-
-      navigator.mediaDevices.getUserMedia(constraints)
-        .then(stream => {
-          streamRef.current = stream;
-          setLocalStream(stream);
-          fetchDevices(); // Rafraîchir avec les vrais noms
-
-          if (videoRef.current && localPlayer?.cameraEnabled) {
-            videoRef.current.srcObject = stream;
-          }
-          if (audioRef.current && localPlayer?.micEnabled) {
-            audioRef.current.srcObject = stream;
-          }
-
-          if (localPlayer?.micEnabled) {
-            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContextRef.current.createMediaStreamSource(stream);
-            analyserRef.current = audioContextRef.current.createAnalyser();
-            analyserRef.current.fftSize = 256;
-            source.connect(analyserRef.current);
-
-            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-            const updateLevel = () => {
-              if (!analyserRef.current) return;
-              analyserRef.current.getByteFrequencyData(dataArray);
-              let sum = 0;
-              for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-              const level = Math.min(100, Math.round((sum / dataArray.length) * 1.5));
-              if (micLevelRef.current) micLevelRef.current.style.width = `${level}%`;
-              animRef.current = requestAnimationFrame(updateLevel);
-            };
-            updateLevel();
-          }
-        }).catch(err => {
-          console.error("Media error:", err);
-          if (localPlayer?.micEnabled) setLocalPlayerStatus({ micEnabled: false });
-          if (localPlayer?.cameraEnabled) setLocalPlayerStatus({ cameraEnabled: false });
-        });
-    }
-
-    return () => {
-      try {
-        // Ne pas couper le stream si on est en train de lancer le jeu (transition vers 3D)
-        if (streamRef.current && !useGameStore.getState().isStarting) {
-          streamRef.current.getTracks().forEach(t => t.stop());
-          setLocalStream(null);
-        }
-        if (animRef.current) cancelAnimationFrame(animRef.current);
-        if (audioContextRef.current) {
-          if (audioContextRef.current.state !== 'closed') {
-            audioContextRef.current.close().catch(e => console.error("Audio close err:", e));
-          }
-          audioContextRef.current = null;
-        }
-      } catch (err) {
-        console.error("Cleanup error:", err);
-      }
-      if (micLevelRef.current) micLevelRef.current.style.width = '0%';
-    };
-  }, [localPlayer?.micEnabled, localPlayer?.cameraEnabled, selectedMic, selectedCam, setLocalPlayerStatus]);
-
-  // Update loopback mute status dynamically without restarting stream
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.muted = !loopback;
-      if (loopback) {
-        audioRef.current.play().catch(e => console.error("Audio play err:", e));
-      }
-    }
-  }, [loopback]);
-
-  // Le déclenchement global est géré dans SocketManager.jsx
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setWifiLevel(prev => Math.max(60, Math.min(100, prev + (Math.random() - 0.5) * 5)));
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleResize = (e) => {
-    const newWidth = (e.clientX / window.innerWidth) * 100;
-    if (newWidth > 20 && newWidth < 80) setLeftWidth(newWidth);
-  };
-
-  const startResizing = () => {
-    window.addEventListener('mousemove', handleResize);
-    window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleResize));
-  };
-
-  const toggleMic = () => {
-    const newVal = !localPlayer?.micEnabled;
-    setLocalPlayerStatus({ micEnabled: newVal });
-    socket.emit('update-status', { micEnabled: newVal });
-  };
-
-  const toggleCamera = () => {
-    const newVal = !localPlayer?.cameraEnabled;
-    setLocalPlayerStatus({ cameraEnabled: newVal });
-    socket.emit('update-status', { cameraEnabled: newVal });
-  };
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
-    <Screen wide onBack={onBack}>
-      <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'stretch', width: '100%', cursor: 'default' }}>
-
-        {/* LEFT: ISOMETRIC VIEW */}
-        <div style={{ width: `${leftWidth}%`, position: 'relative', border: `2px solid ${GREEN}44`, background: '#000', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <IsometricLobby roomCode={code} isHost={isHost} />
-          </div>
-          
-          <div style={{ position: 'absolute', top: '15px', left: '15px', fontFamily: FONT, fontSize: '0.4rem', color: GREEN, background: 'rgba(0,0,0,0.8)', padding: '8px 12px', border: `1px solid ${GREEN}44` }}>
-            SYSTEM_LINK: ACTIVE
-          </div>
-        </div>
-
-        {/* RESIZE HANDLE */}
-        <div 
-          onMouseDown={startResizing}
-          style={{ 
-            width: '15px', cursor: 'col-resize', background: 'transparent',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 0.2s', zIndex: 10
-          }}
-          onMouseEnter={(e) => e.target.style.background = `${GREEN}22`}
-          onMouseLeave={(e) => e.target.style.background = 'transparent'}
-        >
-          <div style={{ width: '2px', height: '40px', background: `${GREEN}88` }} />
-        </div>
-
-        {/* RIGHT: CONTROL PANEL PRO */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', background: 'rgba(0,5,0,0.8)', padding: '20px', border: `2px solid ${GREEN}44`, minWidth: '350px', overflowY: 'auto' }}>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: FONT, fontSize: '0.3rem', color: 'rgba(168,255,62,0.6)', marginBottom: '8px', letterSpacing: '2px' }}>CANAL ESCUADE</div>
-              <div onClick={copyCode} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                fontFamily: FONT, fontSize: '0.8rem', color: GREEN,
-                background: '#010501', padding: '15px', border: `2px solid ${GREEN}66`, cursor: 'pointer',
-                boxShadow: `inset 0 0 10px ${GREEN}22`
-              }}>
-                <span style={{ letterSpacing: '5px' }}>{code}</span>
-                {copied ? <Check size={20} /> : <Copy size={20} />}
+    <Screen onBack={onBack} color={CYAN} wide={true}>
+      <div style={{ display: 'flex', gap: '24px', minHeight: '440px' }}>
+        {/* Colonne Gauche : Status et Chat */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ 
+            border: `1px solid ${CYAN}55`, 
+            padding: '14px', 
+            background: 'rgba(0,216,255,0.05)',
+            marginBottom: '10px'
+          }}>
+            <h2 style={{ fontFamily: FONT, color: CYAN, fontSize: '0.5rem', marginBottom: '8px' }}>NODE: {code}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ 
+                width: '10px', height: '10px', borderRadius: '50%', 
+                background: GREEN, boxShadow: `0 0 8px ${GREEN}` 
+              }} />
+              <div style={{ fontFamily: FONT, color: '#ccc', fontSize: '0.32rem' }}>
+                AGENTS_ACTIFS: <span style={{ color: GREEN }}>{playerCount}</span>
               </div>
-            </div>
-          </div>
-
-          {/* DIAGNOSTIC MEDIA SECTION */}
-          <div style={{ padding: '15px', background: 'rgba(0,10,0,0.6)', border: `1px solid ${CYAN}44`, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: CYAN, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Settings size={14} /> CONFIGURATION PÉRIPHÉRIQUES
             </div>
             
-            {/* CAMERA CONFIG */}
-            <div style={{ marginBottom: '15px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-                <button onClick={toggleCamera} style={{
-                  padding: '8px 12px', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#333'}`,
-                  background: localPlayer?.cameraEnabled ? 'rgba(255,110,180,0.2)' : '#000',
-                  color: localPlayer?.cameraEnabled ? PINK : '#666', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
+            {/* Liste des agents connectés */}
+            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {Object.keys(players).map((pid, i) => (
+                <div key={pid} style={{ 
+                  fontSize: '0.24rem', fontFamily: FONT, 
+                  background: pid === socket.id ? `${GREEN}22` : 'rgba(255,255,255,0.07)',
+                  padding: '3px 8px', border: `1px solid ${pid === socket.id ? GREEN : 'rgba(255,255,255,0.2)'}`,
+                  color: pid === socket.id ? GREEN : '#aaa',
+                  borderRadius: '3px'
                 }}>
-                  {localPlayer?.cameraEnabled ? 'CAM ACTIF' : 'CAM OFF'}
-                </button>
-                <select value={selectedCam} onChange={e => setSelectedCam(e.target.value)} style={{
-                  flex: 1, background: '#000', border: `1px solid ${PINK}66`, color: PINK,
-                  fontFamily: FONT, fontSize: '0.3rem', padding: '5px', minWidth: 0
-                }}>
-                  {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0,5)}`}</option>)}
-                </select>
-              </div>
-              
-              <div style={{ flex: 1, width: '100%', minHeight: '120px', background: '#000', border: `2px solid ${localPlayer?.cameraEnabled ? PINK : '#222'}`, position: 'relative', overflow: 'hidden' }}>
-                {localPlayer?.cameraEnabled ? 
-                  <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} /> 
-                  : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#222' }}><VideoOff size={30}/></div>
-                }
-              </div>
-            </div>
-
-            {/* MIC CONFIG */}
-            <div style={{ marginTop: 'auto' }}>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-                <button onClick={toggleMic} style={{
-                  padding: '8px 12px', border: `2px solid ${localPlayer?.micEnabled ? GREEN : '#333'}`,
-                  background: localPlayer?.micEnabled ? 'rgba(168,255,62,0.2)' : '#000',
-                  color: localPlayer?.micEnabled ? GREEN : '#666', cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
-                }}>
-                  {localPlayer?.micEnabled ? 'MIC ACTIF' : 'MIC OFF'}
-                </button>
-                <select value={selectedMic} onChange={e => setSelectedMic(e.target.value)} style={{
-                  flex: 1, background: '#000', border: `1px solid ${GREEN}66`, color: GREEN,
-                  fontFamily: FONT, fontSize: '0.3rem', padding: '5px', minWidth: 0
-                }}>
-                  {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Micro ${d.deviceId.slice(0,5)}`}</option>)}
-                </select>
-              </div>
-              
-              {/* Audio Visualizer & Loopback */}
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <div style={{ flex: 1, height: '12px', background: '#000', border: `1px solid ${GREEN}44`, position: 'relative' }}>
-                  <div ref={micLevelRef} style={{ width: '0%', height: '100%', background: GREEN, transition: 'width 0.1s' }} />
+                  {pid === socket.id ? '▶ VOUS' : `AGENT_${i + 1}`}
                 </div>
-                <button onClick={() => setLoopback(!loopback)} style={{
-                  padding: '5px 8px', background: loopback ? GREEN : 'transparent', color: loopback ? '#000' : GREEN,
-                  border: `1px solid ${GREEN}`, cursor: 'pointer', fontFamily: FONT, fontSize: '0.28rem'
-                }}>
-                  {loopback ? 'TEST: ON' : 'TEST: OFF'}
-                </button>
-                <audio ref={audioRef} autoPlay playsInline />
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Choix du Skin */}
-          <div style={{ display: 'flex', gap: '10px', marginTop: '12px', alignItems: 'center' }}>
-            <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: '#fff', flexShrink: 0 }}>SKIN :</div>
-            <button
-              onClick={() => {
-                const newSkin = localPlayer?.skin === 'sphere' ? 'human' : 'sphere';
-                setLocalPlayerStatus({ skin: newSkin });
-                socket?.emit('update-status', { skin: newSkin });
-              }}
-              style={{
-                flex: 1, padding: '8px', border: `2px solid #3498db`,
-                background: 'rgba(52, 152, 219, 0.15)', color: '#3498db',
-                cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
-              }}>
-              {localPlayer?.skin === 'human' ? '👦 HUMAIN 2D' : '🔵 SPHÈRE 3D'}
-            </button>
-          </div>
+          {/* Le Chat */}
+          <LobbyChat socket={socket} />
 
-          <div style={{ marginTop: 'auto' }}>
+          <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
             {isHost ? (
-              <Btn large onClick={() => { 
-                socket.emit('start-game');
-                
-                // Signal "Burst" Magique : On utilise la rotation pour contourner les filtres du serveur
-                let count = 0;
-                const interval = setInterval(() => {
-                  socket.emit('move', { 
-                    position: [0, 5, 0], 
-                    rotation: [0, 999, 0] // 999 est notre signal de départ !
-                  });
-                  count++;
-                  if (count >= 5) clearInterval(interval);
-                }, 100);
-                
-                setIsStarting(true);
-                setIsGameStarted(true);
-              }} disabled={playerCount < 1} color={CYAN}>
-                🚀 INITIATION SÉQUENCE DE DÉPLOIEMENT
-              </Btn>
+              <button
+                onClick={() => { socket.emit('start-game'); setIsStarting(true); setIsGameStarted(true); }}
+                className="btn-pixel-lobby"
+                style={{ width: '100%', background: CYAN, color: '#000', border: 'none', justifyContent: 'center' }}
+              >
+                <div style={{ fontFamily: FONT, fontSize: '0.45rem' }}>DÉPLOYER_ESCOUADE</div>
+              </button>
             ) : (
-              <div style={{
-                padding: '20px', textAlign: 'center', background: 'rgba(255,110,180,0.05)',
-                border: `2px solid ${PINK}55`, color: PINK, fontFamily: FONT, fontSize: '0.45rem', letterSpacing: '4px'
-              }}>
-                <span className="waiting-dots">SYNCHRONISATION HÔTE</span>
+              <div style={{ 
+                fontFamily: FONT, color: PINK, fontSize: '0.35rem', 
+                textAlign: 'center', background: 'rgba(0,0,0,0.4)', padding: '14px',
+                border: `1px dashed ${PINK}88`
+              }} className="waiting-dots">
+                ATTENTE_SIGNAL_HÔTE
               </div>
             )}
           </div>
+        </div>
 
+        {/* Colonne Droite : Visualisation 3D du salon */}
+        <div style={{ flex: 1.5, border: `2px solid ${CYAN}`, position: 'relative', background: '#000' }}>
+          <IsometricLobby roomCode={code} isHost={isHost} />
+          <div style={{ 
+            position: 'absolute', top: '10px', right: '10px', 
+            fontFamily: FONT, fontSize: '0.35rem', color: CYAN, 
+            background: 'rgba(0,0,0,0.85)', padding: '6px 12px',
+            border: `1px solid ${CYAN}`
+          }}>
+            FLUX_TACTIQUE_ISO
+          </div>
+          
+          <div style={{ 
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 1px, transparent 1px, transparent 3px)'
+          }} />
         </div>
       </div>
     </Screen>
@@ -730,24 +662,16 @@ export const LobbyMenu = ({ socket, onStart }) => {
   const [roomCode, setRoomCode] = useState(null);
   const [isHost, setIsHost] = useState(false);
 
-  const handleSolo = () => setScreen('solo_setup');
-  const handleEnterSolo = () => { socket?.emit('join-solo'); onStart({ mode: 'solo', code: null }); };
-  const handleEnterWorld = () => onStart({ mode: 'room', code: roomCode || socket?.roomCode });
-
   const handleCreateRequest = () => {
     if (!socket) return;
-    setScreen('create_loading');
-    socket.once('room-created', ({ code }) => {
-      setRoomCode(code); socket.roomCode = code; setIsHost(true); setScreen('waiting');
-    });
-    if (socket.connected) socket.emit('create-room');
-    else socket.once('connect', () => socket.emit('create-room'));
+    setScreen('loading');
+    socket.once('room-created', ({ code }) => { setRoomCode(code); setIsHost(true); setScreen('waiting'); });
+    socket.emit('create-room');
   };
 
-  if (screen === 'create_loading') return <Screen><div className="waiting-dots" style={{ fontFamily: FONT, color: GREEN, fontSize: '0.6rem' }}>GÉNÉRATION...</div></Screen>;
-  if (screen === 'solo_setup') return <SoloSetupScreen socket={socket} onEnter={handleEnterSolo} onBack={() => setScreen('choice')} />;
+  if (screen === 'loading') return <Screen color={GREEN}><div style={{ fontFamily: FONT, color: GREEN }} className="waiting-dots">GÉNÉRATION_NODE</div></Screen>;
   if (screen === 'join') return <JoinScreen socket={socket} onJoined={(c) => { setRoomCode(c); setIsHost(false); setScreen('waiting'); }} onBack={() => setScreen('choice')} />;
-  if (screen === 'waiting') return <WaitingRoomScreen socket={socket} code={roomCode} isHost={isHost} onStartGame={handleEnterWorld} onBack={() => setScreen('choice')} />;
+  if (screen === 'waiting') return <WaitingRoomScreen socket={socket} code={roomCode} isHost={isHost} onBack={() => setScreen('choice')} />;
 
-  return <ChoiceScreen onSolo={handleSolo} onCreate={handleCreateRequest} onJoin={() => setScreen('join')} />;
+  return <ChoiceScreen onSolo={() => onStart({ mode: 'solo' })} onCreate={handleCreateRequest} onJoin={() => setScreen('join')} />;
 };

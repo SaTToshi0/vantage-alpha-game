@@ -22,7 +22,7 @@ const io = new Server(httpServer, {
 
 // ─── Stockage ───
 const players = {};        // { socketId: playerData }
-const rooms   = {};        // { code: { players: [id, id], maxPlayers: 2 } }
+const rooms   = {};        // { code: { players: [id, id], maxPlayers: 2, screens: [] } }
 
 // ─── Génère un code salon aléatoire (6 caractères) ───
 const generateCode = () => {
@@ -39,11 +39,11 @@ io.on('connection', (socket) => {
   // ─── Créer un salon ───
   socket.on('create-room', () => {
     const code = generateCode();
-    rooms[code] = { players: [socket.id], maxPlayers: 2 };
+    rooms[code] = { players: [socket.id], maxPlayers: 2, screens: [] };
     socket.join(code);           // Socket.io room
     socket.roomCode = code;
 
-    players[socket.id] = { id: socket.id, position: [0, 5, 0], rotation: [0, 0, 0], roomCode: code };
+    players[socket.id] = { id: socket.id, position: [6, 5, 6], rotation: [0, 0, 0], roomCode: code };
     socket.emit('room-created', { code });
     socket.emit('players', { [socket.id]: players[socket.id] });
     console.log(`🏠 Room created: ${code}`);
@@ -71,14 +71,14 @@ io.on('connection', (socket) => {
     socket.join(upperCode);
     socket.roomCode = upperCode;
 
-    players[socket.id] = { id: socket.id, position: [0, 5, 0], rotation: [0, 0, 0], roomCode: upperCode };
+    players[socket.id] = { id: socket.id, position: [5, 5, 7], rotation: [0, 0, 0], roomCode: upperCode };
 
     // Envoyer la liste des joueurs déjà dans le salon au nouvel arrivant
     const roomPlayers = room.players.reduce((acc, id) => {
       if (players[id]) acc[id] = players[id];
       return acc;
     }, {});
-    socket.emit('room-joined', { code: upperCode, players: roomPlayers });
+    socket.emit('room-joined', { code: upperCode, players: roomPlayers, screens: room.screens });
 
     // Annoncer le nouvel arrivant aux autres membres du salon
     socket.to(upperCode).emit('playerConnected', players[socket.id]);
@@ -129,13 +129,59 @@ io.on('connection', (socket) => {
 
   // ─── WebRTC Signaling ───
   socket.on('signal', (data) => {
-    // Relais du signal WebRTC (Offer, Answer, ICE Candidate) au joueur cible
     if (data.target) {
       io.to(data.target).emit('signal', {
         sender: socket.id,
         sdp: data.sdp,
-        candidate: data.candidate
+        candidate: data.candidate,
+        streamType: data.streamType
       });
+    }
+  });
+
+  // ─── Chat du Lobby (diffusé à tous dans la salle) ───
+  socket.on('lobby-chat-message', (data) => {
+    const code = socket.roomCode;
+    if (!code || !data?.text) return;
+    const msg = {
+      text: String(data.text).slice(0, 200), // Limite la taille
+      senderId: socket.id,
+      timestamp: Date.now(),
+    };
+    // Envoyer à TOUS les membres de la salle (y compris l'expéditeur pour la confirmation)
+    io.to(code).emit('lobby-chat-message', msg);
+    console.log(`💬 [${code}] ${socket.id.slice(0,4)}: ${msg.text}`);
+  });
+
+  // ─── Ecrans Partagés (Screen Share) ───
+  socket.on('create-screen', (screenData) => {
+    const code = socket.roomCode;
+    if (code && rooms[code]) {
+      // Retirer l'ancien écran s'il existe
+      rooms[code].screens = rooms[code].screens.filter(s => s.id !== screenData.id);
+      rooms[code].screens.push(screenData);
+      socket.to(code).emit('screen-created', screenData);
+    }
+  });
+
+  socket.on('update-screen', ({ id, position, rotation, scale }) => {
+    const code = socket.roomCode;
+    if (code && rooms[code]) {
+      const screen = rooms[code].screens.find(s => s.id === id);
+      if (screen) {
+        screen.position = position;
+        screen.rotation = rotation;
+        if (scale !== undefined) screen.scale = scale;
+        socket.to(code).emit('screen-updated', { id, position, rotation, scale });
+      }
+    }
+  });
+
+  socket.on('remove-screen', (id) => {
+    const code = socket.roomCode;
+    if (code && rooms[code]) {
+      rooms[code].screens = rooms[code].screens.filter(s => s.id !== id);
+      socket.to(code).emit('screen-removed', id);
     }
   });
 
@@ -146,12 +192,15 @@ io.on('connection', (socket) => {
 
     if (code && rooms[code]) {
       rooms[code].players = rooms[code].players.filter(id => id !== socket.id);
+      rooms[code].screens = rooms[code].screens.filter(s => s.ownerId !== socket.id);
+      
       if (rooms[code].players.length === 0) {
         delete rooms[code];
         console.log(`🗑️  Room deleted: ${code}`);
       } else {
         // Prévenir les autres membres
         io.to(code).emit('playerDisconnected', socket.id);
+        io.to(code).emit('screen-removed', socket.id);
       }
     }
     delete players[socket.id];

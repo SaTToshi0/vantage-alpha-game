@@ -36,7 +36,7 @@ const DECORATIONS = [
 
 export const IsometricLobby = ({ roomCode, isHost }) => {
   const canvasRef = useRef(null);
-  const localPosRef = useRef({ x: 5, y: 7 });
+  const localPosRef = useRef({ x: 6, y: 6 }); // Position initiale centre de la map
   const playersRef = useRef({});
   const localPlayerRef = useRef({});
   const keysRef = useRef({});
@@ -62,6 +62,9 @@ export const IsometricLobby = ({ roomCode, isHost }) => {
       });
     }
     particlesRef.current = pts;
+
+    // Émettre la position initiale pour que les autres joueurs nous voient tout de suite
+    emitMove([localPosRef.current.x, 5, localPosRef.current.y], [0, 0, 0]);
 
     return () => unsub();
   }, []);

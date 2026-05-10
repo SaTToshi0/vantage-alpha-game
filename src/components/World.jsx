@@ -1,103 +1,61 @@
-import { Stars, Sky, Environment, Grid, BakeShadows } from '@react-three/drei';
+import { Stars, Sky, Environment, Grid, BakeShadows, Sparkles } from '@react-three/drei';
 import { usePlane, useBox } from '@react-three/cannon';
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { MedievalScenery } from './MedievalScenery';
 import { GiantScreen } from './GiantScreen';
 import { useGameStore } from '../store/useGameStore';
+import { MapEditor } from './MapEditor';
 
-// Gestionnaire dynamique des écrans centraux
-const ScreenManager = () => {
-  const localPlayer = useGameStore(state => state.localPlayer);
-  const localStream = useGameStore(state => state.localStream);
+// Gestionnaire unifié des écrans (Webcams + Partages d'écran physiques)
+const NexusScreensManager = () => {
   const players = useGameStore(state => state.players);
-  const remoteStreams = useGameStore(state => state.remoteStreams);
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const screens = useGameStore(state => state.screens);
+  const streamsById = useGameStore(state => state.streamsById);
+  const localScreenStream = useGameStore(state => state.localScreenStream);
+  const localStream = useGameStore(state => state.localStream);
 
-  // Rassembler tous les joueurs avec une caméra active
-  const activeScreens = [];
+  if (screens.length === 0) return null;
 
-  if (localPlayer?.cameraEnabled && localStream) {
-    activeScreens.push({
-      id: 'local',
-      isLocal: true,
-      player: localPlayer,
-      stream: localStream,
-      color: '#a8ff3e', // Vert pour le joueur local
-      mirrored: true
-    });
-  }
-
-  Object.values(players || {}).forEach((p) => {
-    if (p.cameraEnabled && remoteStreams[p.id]) {
-      activeScreens.push({
-        id: p.id,
-        isLocal: false,
-        player: p,
-        stream: remoteStreams[p.id],
-        color: '#ff00ff', // Rose pour les joueurs distants
-        mirrored: false
-      });
-    }
-  });
-
-  if (activeScreens.length === 0) return null;
-
-  // Placement spécifique
-  const radius = 12;
-  const height = 8;  // À hauteur des yeux du joueur
-  const screenScale = 2.0; // Très grand et imposant
-
-  // Cas spécial : 2 écrans face à face
-  if (activeScreens.length === 2) {
-    return (
-      <group>
-        <GiantScreen 
-          key={activeScreens[0].id}
-          stream={activeScreens[0].stream}
-          player={activeScreens[0].player}
-          position={[-radius, height, 0]}
-          rotation={[0, Math.PI / 2, 0]} // Fait face à la droite
-          scale={screenScale}
-          color={activeScreens[0].color}
-          mirrored={activeScreens[0].mirrored}
-          isLocal={activeScreens[0].isLocal}
-        />
-        <GiantScreen 
-          key={activeScreens[1].id}
-          stream={activeScreens[1].stream}
-          player={activeScreens[1].player}
-          position={[radius, height, 0]}
-          rotation={[0, -Math.PI / 2, 0]} // Fait face à la gauche
-          scale={screenScale}
-          color={activeScreens[1].color}
-          mirrored={activeScreens[1].mirrored}
-          isLocal={activeScreens[1].isLocal}
-        />
-      </group>
-    );
-  }
-
-  // Cas générique (1 écran ou 3+ écrans) en arc
-  const angleStep = Math.PI / 6;
   return (
     <group>
-      {activeScreens.map((screenData, index) => {
-        const angle = (index - (activeScreens.length - 1) / 2) * angleStep;
-        const x = Math.sin(angle) * radius;
-        const z = -Math.cos(angle) * radius;
-        const rotationY = -angle;
+      {screens.map((s) => {
+        // Déterminer la source du flux (webcam ou screen share, local ou distant)
+        let stream = streamsById[s.streamId];
+        let isLocal = false;
+        
+        if (s.streamId === localScreenStream?.id) {
+          stream = localScreenStream;
+          isLocal = true;
+        } else if (s.streamId === localStream?.id) {
+          stream = localStream;
+          isLocal = true;
+        }
+
+        const isShare = s.id.startsWith('share-');
+        const color = isShare ? '#00d8ff' : (isLocal ? '#a8ff3e' : '#ff00ff');
+        const scale = isShare ? 2.4 : 1.8;
+        
+        // Faux objet joueur pour transmettre l'UI du GiantScreen
+        const owner = players[s.ownerId] || (isLocal ? localPlayer : null);
+        const name = isShare 
+          ? (owner?.name ? `${owner.name} SHARE` : 'SCREEN SHARE')
+          : (owner?.name || 'WEBCAM');
 
         return (
           <GiantScreen 
-            key={screenData.id}
-            stream={screenData.stream}
-            player={screenData.player}
-            position={[x, height, z]}
-            rotation={[0, rotationY, 0]}
-            scale={screenScale}
-            color={screenData.color}
-            mirrored={screenData.mirrored}
-            isLocal={screenData.isLocal}
+            key={s.id}
+            id={s.id}
+            stream={stream}
+            player={{ name, id: s.ownerId, cameraEnabled: true }}
+            position={s.position}
+            rotation={s.rotation}
+            scale={scale} 
+            color={color}
+            mirrored={!isShare && isLocal} // On miroir sa propre webcam, mais pas son propre écran
+            isLocal={isLocal}
           />
         );
       })}
@@ -144,27 +102,35 @@ const LandingBase = () => {
     <group position={[0, 0, 0]}>
       {/* --- PLATEFORME PRINCIPALE --- */}
       <mesh ref={ref} position={[0, 0.1, 0]} receiveShadow>
-        {/* Base large métallique */}
-        <cylinderGeometry args={[6, 7, 0.4, 16]} />
-        <meshStandardMaterial color="#0a0b10" metalness={0.9} roughness={0.2} />
+        {/* Base large en cristal blanc poli - Géométrie allégée */}
+        <cylinderGeometry args={[6, 7, 0.4, 24]} />
+        <meshStandardMaterial color="#ffffff" metalness={0.4} roughness={0.2} />
       </mesh>
       
-      {/* Couche intermédiaire en verre fumé */}
+      {/* Couche intermédiaire en verre prismatique cyan (OPTIMISÉE ZÉRO LAG) */}
       <mesh position={[0, 0.35, 0]}>
-        <cylinderGeometry args={[5.5, 6, 0.2, 16]} />
-        <meshStandardMaterial color="#11111a" metalness={1} roughness={0.05} transparent opacity={0.8} />
+        <cylinderGeometry args={[5.5, 6, 0.2, 24]} />
+        <meshStandardMaterial 
+          color="#00d8ff" 
+          transparent={true}
+          opacity={0.3} 
+          metalness={0.5} 
+          roughness={0.1} 
+          emissive="#00d8ff"
+          emissiveIntensity={0.5}
+        />
       </mesh>
 
-      {/* Surface de marche détaillée */}
+      {/* Surface de marche : Miroir profond */}
       <mesh position={[0, 0.5, 0]}>
-        <cylinderGeometry args={[5, 5.5, 0.1, 16]} />
-        <meshStandardMaterial color="#050508" metalness={0.7} roughness={0.5} />
+        <cylinderGeometry args={[5, 5.5, 0.1, 24]} />
+        <meshStandardMaterial color="#050a15" metalness={0.8} roughness={0.1} />
       </mesh>
 
       {/* Lignes de circuit (Néon incrusté au sol) */}
       <mesh position={[0, 0.56, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[3.8, 4.0, 32]} />
-        <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={2} />
+        <ringGeometry args={[3.8, 4.0, 24]} />
+        <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={3} />
       </mesh>
       <mesh position={[0, 0.56, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.8, 1.9, 16]} />
@@ -193,57 +159,56 @@ const LandingBase = () => {
           <octahedronGeometry args={[0.4]} />
           <meshStandardMaterial color="#ffffff" emissive="#00d8ff" emissiveIntensity={4} />
         </mesh>
-        {/* Anneaux complexes autour du noyau */}
+        {/* Anneaux complexes autour du noyau (Géométrie allégée) */}
         <mesh ref={coreRing1Ref} rotation={[Math.PI / 2.5, 0, 0]}>
-          <torusGeometry args={[0.8, 0.02, 16, 64]} />
-          <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
+          <torusGeometry args={[0.8, 0.02, 8, 32]} />
+          <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={3} />
         </mesh>
         <mesh ref={coreRing2Ref} rotation={[-Math.PI / 3, Math.PI / 4, 0]}>
-          <torusGeometry args={[1.1, 0.015, 16, 64]} />
-          <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={2} />
+          <torusGeometry args={[1.1, 0.015, 8, 32]} />
+          <meshStandardMaterial color="#00d8ff" emissive="#00d8ff" emissiveIntensity={3} />
         </mesh>
         <mesh ref={coreRing3Ref}>
           <boxGeometry args={[1.5, 1.5, 1.5]} />
-          <meshStandardMaterial color="#00d8ff" wireframe transparent opacity={0.3} emissive="#00d8ff" emissiveIntensity={1} />
+          <meshStandardMaterial color="#00d8ff" wireframe transparent opacity={0.5} emissive="#00d8ff" emissiveIntensity={2} />
         </mesh>
       </group>
 
-      {/* --- MONOLITHES PÉRIPHÉRIQUES --- */}
-      {/* 4 Piliers massifs technologiques */}
+      {/* --- MONOLITHES PÉRIPHÉRIQUES (Cristaux lévitants) --- */}
       {[
         [-4.8, -4.8], [4.8, -4.8], [-4.8, 4.8], [4.8, 4.8]
       ].map(([x, z], i) => (
-        <group key={i} position={[x, 0.5, z]}>
-          {/* Base du pilier */}
-          <mesh position={[0, 0.5, 0]}>
-            <boxGeometry args={[1.2, 1, 1.2]} />
-            <meshStandardMaterial color="#050508" metalness={0.8} roughness={0.3} />
+        <group key={i} position={[x, 1.5, z]}>
+          {/* Base lévitante */}
+          <mesh position={[0, 0, 0]}>
+            <octahedronGeometry args={[0.5]} />
+            <meshStandardMaterial color="#ffffff" metalness={0.8} roughness={0.1} />
           </mesh>
-          {/* Corps principal biseauté (simulé avec cylindre octogonal) */}
-          <mesh position={[0, 2.5, 0]}>
-            <cylinderGeometry args={[0.4, 0.6, 3, 4]} />
-            <meshStandardMaterial color="#11111a" metalness={1} roughness={0.1} />
+          
+          {/* Cristal principal (OPTIMISÉ ZÉRO LAG) */}
+          <mesh position={[0, 2, 0]}>
+            <cylinderGeometry args={[0.1, 0.5, 4, 6]} />
+            <meshStandardMaterial 
+              color={i % 2 === 0 ? "#00d8ff" : "#ff00ff"} 
+              transparent={true} 
+              opacity={0.6} 
+              metalness={0.5} 
+              roughness={0.2}
+              emissive={i % 2 === 0 ? "#00d8ff" : "#ff00ff"}
+              emissiveIntensity={0.5}
+            />
           </mesh>
-          {/* Bande LED montante */}
-          <mesh position={[0, 2.5, 0]}>
-            <cylinderGeometry args={[0.41, 0.61, 3, 4]} />
-            <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={1.5} wireframe transparent opacity={0.5} />
-          </mesh>
-          {/* Orbe sommital de projection */}
-          <mesh position={[0, 4.2, 0]}>
-            <sphereGeometry args={[0.3, 16, 16]} />
+
+          {/* Halo holographique tournant */}
+          <mesh position={[0, 4.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.6, 0.02, 8, 24]} />
             <meshStandardMaterial color="#ffffff" emissive={i % 2 === 0 ? "#00d8ff" : "#ff00ff"} emissiveIntensity={3} />
-          </mesh>
-          {/* Halo holographique */}
-          <mesh position={[0, 4.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.4, 0.6, 16]} />
-            <meshStandardMaterial color={i % 2 === 0 ? "#00d8ff" : "#ff00ff"} transparent opacity={0.3} side={2} />
           </mesh>
         </group>
       ))}
 
-      {/* Lumières intégrées à la base pour éclairer les joueurs sans utiliser de pointLight massifs */}
-      <rectAreaLight width={5} height={5} color="#00d8ff" intensity={2} position={[0, 2, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+      {/* Lumières intégrées à la base */}
+      <pointLight color="#00d8ff" intensity={2} position={[0, 2, 0]} distance={10} />
     </group>
   );
 };
@@ -259,11 +224,13 @@ export const World = () => {
     <>
       <Sky sunPosition={[100, 10, 100]} inclination={0} azimuth={0.25} />
       <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={1} />
-      <Environment preset="night" />
+      {/* Désactivé car peut causer des écrans noirs si le chargement échoue */}
+      {/* <Environment preset="night" /> */}
 
-      <ambientLight intensity={0.6} />
-      <pointLight position={[10, 20, 10]} intensity={2.5} color="#3498db" />
-      <pointLight position={[-10, 20, -10]} intensity={2} color="#e74c3c" />
+      <ambientLight intensity={1.5} />
+      <pointLight position={[10, 20, 10]} intensity={50} color="#00d8ff" />
+      <pointLight position={[-10, 20, -10]} intensity={50} color="#ff00ff" />
+      <directionalLight position={[5, 10, 5]} intensity={2} castShadow />
 
       <Grid
         infiniteGrid
@@ -278,11 +245,13 @@ export const World = () => {
 
       <mesh ref={groundRef} receiveShadow frustumCulled={false}>
         <planeGeometry args={[300, 300]} />
-        <meshStandardMaterial color="#020205" roughness={0.9} metalness={0.1} />
+        <meshStandardMaterial color="#222222" roughness={0.8} metalness={0.2} />
       </mesh>
 
       <LandingBase />
-      <ScreenManager />
+      <NexusScreensManager />
+      {/* ── ÉDITEUR DE MAP ── */}
+      <MapEditor />
       {/* <MedievalScenery /> Désactivé pour le style Cyberpunk et pour réduire drastiquement le lag (moins de lumières) */}
     </>
   );

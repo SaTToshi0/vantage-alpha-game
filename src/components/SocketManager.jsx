@@ -35,6 +35,11 @@ export const SocketManager = () => {
   const setIsGameStarted = useGameStore(state => state.setIsGameStarted);
   const setIsStarting = useGameStore(state => state.setIsStarting);
   const setRoomCode = useGameStore(state => state.setRoomCode);
+  const localScreenStream = useGameStore(state => state.localScreenStream);
+  const addScreen = useGameStore(state => state.addScreen);
+  const updateScreen = useGameStore(state => state.updateScreen);
+  const removeScreen = useGameStore(state => state.removeScreen);
+  const setScreens = useGameStore(state => state.setScreens);
 
   useEffect(() => {
     const sock = initializeSocket();
@@ -138,8 +143,9 @@ export const SocketManager = () => {
     };
 
     // room-joined : mettre à jour la liste des joueurs du salon
-    const handleRoomJoined = ({ players: roomPlayers, code }) => {
+    const handleRoomJoined = ({ players: roomPlayers, code, screens }) => {
       if (code) setRoomCode(code);
+      if (screens) setScreens(screens);
       if (roomPlayers) {
         setPlayers(roomPlayers);
         // On initie la connexion avec tous les joueurs déjà présents
@@ -185,6 +191,9 @@ export const SocketManager = () => {
     sock.on('room-created', handleRoomCreated);
     sock.on('signal', handleSignal);
     sock.on('game-started', handleGameStarted);
+    sock.on('screen-created', addScreen);
+    sock.on('screen-updated', (data) => updateScreen(data.id, data));
+    sock.on('screen-removed', removeScreen);
 
     return () => {
       sock.off('connect', handleConnect);
@@ -196,6 +205,9 @@ export const SocketManager = () => {
       sock.off('room-created', handleRoomCreated);
       sock.off('signal', handleSignal);
       sock.off('game-started', handleGameStarted);
+      sock.off('screen-created', addScreen);
+      sock.off('screen-updated');
+      sock.off('screen-removed', removeScreen);
     };
   }, [setPlayers, updatePlayer, removePlayer, setLocalPlayerId, addRemoteStream, removeRemoteStream, setIsGameStarted, setIsStarting, setRoomCode]); // removed localStreamInStore from dependencies to avoid recreating socket
 
@@ -205,7 +217,7 @@ export const SocketManager = () => {
       Object.values(peers).forEach(pc => {
         const senders = pc.getSenders();
         localStreamInStore.getTracks().forEach(track => {
-          const sender = senders.find(s => s.track && s.track.kind === track.kind);
+          const sender = senders.find(s => s.track && s.track.kind === track.kind && s.track.id === track.id);
           if (sender) {
             sender.replaceTrack(track);
           } else {
@@ -215,6 +227,28 @@ export const SocketManager = () => {
       });
     }
   }, [localStreamInStore]);
+
+  // Effet pour le partage d'écran
+  useEffect(() => {
+    if (localScreenStream) {
+      Object.values(peers).forEach(pc => {
+        localScreenStream.getTracks().forEach(track => {
+          // On ajoute simplement les tracks de l'écran. 
+          pc.addTrack(track, localScreenStream); 
+        });
+      });
+    } else {
+      // Si on arrête le partage, on retire les tracks (ou on ferme le stream)
+      Object.values(peers).forEach(pc => {
+        const senders = pc.getSenders();
+        senders.forEach(s => {
+          if (s.track && s.track.label.toLowerCase().includes('screen')) {
+            pc.removeTrack(s);
+          }
+        });
+      });
+    }
+  }, [localScreenStream]);
 
   return null;
 };

@@ -1,9 +1,9 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useRef, useState } from 'react';
+import { useRef, useState, Suspense } from 'react';
 import { Vector3, Euler } from 'three';
 import { useGameStore } from '../store/useGameStore';
 import { FloatingVideo } from './FloatingVideo';
-import { SpriteCharacter } from './SpriteCharacter';
+import { AnimatedCharacter } from './AnimatedCharacter';
 
 // ========== CONSTANTES ==========
 const POSITION_LERP = 0.15;
@@ -11,7 +11,12 @@ const ROTATION_LERP = 0.1;
 const VERY_FAR_DISTANCE = 150; 
 const FAR_DISTANCE = 80;       
 
-export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'sphere' }) => {
+const VALID_SKINS = ['criminalMaleA', 'cyborgFemaleA', 'skaterFemaleA', 'skaterMaleA'];
+
+export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'criminalMaleA' }) => {
+  // 'sphere' et 'robot' sont des skins géométriques natifs (pas de texture FBX)
+  const isGeomSkin = skin === 'sphere' || skin === 'robot';
+  const safeSkin = VALID_SKINS.includes(skin) ? skin : 'criminalMaleA';
   const groupRef = useRef();
   const remoteStream = useGameStore(state => state.remoteStreams[id]);
   
@@ -69,8 +74,8 @@ export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'sp
   return (
     <group ref={groupRef} position={position}>
 
-      {/* === SPHERE SKIN === */}
-      {skin !== 'human' && (
+      {/* === SPHERE / ROBOT SKIN (géométrie native, pas de texture) === */}
+      {isGeomSkin && (
         <>
           <mesh castShadow>
             {isLowQuality ? (
@@ -109,9 +114,11 @@ export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'sp
         </>
       )}
 
-      {/* === HUMAN SPRITE SKIN === */}
-      {skin === 'human' && (
-        <SpriteCharacter isMoving={isMoving} skinVariant={0} />
+      {/* === KENNEY ANIMATED SKIN === */}
+      {!isGeomSkin && (
+        <Suspense fallback={null}>
+          <AnimatedCharacter skin={safeSkin} isMoving={isMoving} isJumping={false} />
+        </Suspense>
       )}
 
       {/* DISQUE AU SOL */}
@@ -119,8 +126,8 @@ export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'sp
         <mesh position={[0, -0.6, 0]}>
           <cylinderGeometry args={[0.4, 0.4, 0.05, 16]} />
           <meshStandardMaterial
-            color={skin === 'human' ? '#f39c12' : '#00ff00'}
-            emissive={skin === 'human' ? '#f39c12' : '#00ff00'}
+            color={skin === 'robot' ? '#00ff00' : '#f39c12'}
+            emissive={skin === 'robot' ? '#00ff00' : '#f39c12'}
             emissiveIntensity={2}
             transparent
             opacity={1}
