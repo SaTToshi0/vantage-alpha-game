@@ -49,10 +49,20 @@ export const SocketManager = () => {
 
         peers[targetId] = pc;
 
-        // Ajouter le flux local si disponible
+        // Ajouter le flux local initial si disponible
         if (localStreamInStore) {
           localStreamInStore.getTracks().forEach(track => pc.addTrack(track, localStreamInStore));
         }
+
+        pc.onnegotiationneeded = async () => {
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            sock.emit('signal', { target: targetId, sdp: pc.localDescription });
+          } catch (err) {
+            console.error("Negotiation error:", err);
+          }
+        };
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
@@ -187,7 +197,24 @@ export const SocketManager = () => {
       sock.off('signal', handleSignal);
       sock.off('game-started', handleGameStarted);
     };
-  }, [setPlayers, updatePlayer, removePlayer, setLocalPlayerId, localStreamInStore, addRemoteStream, removeRemoteStream, setIsGameStarted, setIsStarting, setRoomCode]);
+  }, [setPlayers, updatePlayer, removePlayer, setLocalPlayerId, addRemoteStream, removeRemoteStream, setIsGameStarted, setIsStarting, setRoomCode]); // removed localStreamInStore from dependencies to avoid recreating socket
+
+  // Effet séparé pour gérer l'ajout de nouveaux flux (ex: allumer la caméra en jeu)
+  useEffect(() => {
+    if (localStreamInStore) {
+      Object.values(peers).forEach(pc => {
+        const senders = pc.getSenders();
+        localStreamInStore.getTracks().forEach(track => {
+          const sender = senders.find(s => s.track && s.track.kind === track.kind);
+          if (sender) {
+            sender.replaceTrack(track);
+          } else {
+            pc.addTrack(track, localStreamInStore); // Cela déclenchera onnegotiationneeded automatiquement
+          }
+        });
+      });
+    }
+  }, [localStreamInStore]);
 
   return null;
 };

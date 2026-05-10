@@ -27,11 +27,9 @@ function HUD({ roomCode }) {
     setLocalPlayerStatus({ micEnabled: newVal });
     getSocket()?.emit('update-status', { micEnabled: newVal });
 
-    // Activer/désactiver l'audio dans le flux existant
-    if (localStream) {
+    if (localStream && localStream.getAudioTracks().length > 0) {
       localStream.getAudioTracks().forEach(t => { t.enabled = newVal; });
     } else if (newVal) {
-      // Demander accès si pas de flux
       navigator.mediaDevices?.getUserMedia({ audio: true, video: localPlayer?.cameraEnabled || false })
         .then(stream => setLocalStream(stream))
         .catch(console.error);
@@ -43,8 +41,7 @@ function HUD({ roomCode }) {
     setLocalPlayerStatus({ cameraEnabled: newVal });
     getSocket()?.emit('update-status', { cameraEnabled: newVal });
 
-    // Activer/désactiver la vidéo dans le flux existant
-    if (localStream) {
+    if (localStream && localStream.getVideoTracks().length > 0) {
       localStream.getVideoTracks().forEach(t => { t.enabled = newVal; });
     } else if (newVal) {
       navigator.mediaDevices?.getUserMedia({ audio: localPlayer?.micEnabled || false, video: true })

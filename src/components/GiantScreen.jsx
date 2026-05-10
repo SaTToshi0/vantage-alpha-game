@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { Mic, MicOff } from 'lucide-react';
+import * as THREE from 'three';
 
 export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false, isLocal = true }) => {
   const groupRef = useRef();
@@ -49,12 +50,12 @@ export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation 
       <mesh scale={[mirrored ? -1 : 1, 1, 1]}>
         <planeGeometry args={[16, 9]} />
         {video ? (
-          <meshBasicMaterial>
+          <meshBasicMaterial side={THREE.DoubleSide}>
             <videoTexture attach="map" args={[video]} />
           </meshBasicMaterial>
         ) : (
           // Écran éteint : fond sombre + texte NO SIGNAL via HTML léger
-          <meshStandardMaterial color="#030308" metalness={1} roughness={0.1} />
+          <meshStandardMaterial color="#030308" metalness={1} roughness={0.1} side={THREE.DoubleSide} />
         )}
       </mesh>
 
