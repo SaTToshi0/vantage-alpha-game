@@ -9,6 +9,7 @@ export const useGameStore = create((set) => ({
     micEnabled: false,
     cameraEnabled: false,
     wifiSignal: 100,
+    skin: 'sphere',
   },
   localStream: null,
   setLocalStream: (stream) => set({ localStream: stream }),

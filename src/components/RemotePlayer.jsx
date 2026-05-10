@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Vector3, Euler } from 'three';
 import { useGameStore } from '../store/useGameStore';
 import { FloatingVideo } from './FloatingVideo';
+import { SpriteCharacter } from './SpriteCharacter';
 
 // ========== CONSTANTES ==========
 const POSITION_LERP = 0.15;
@@ -10,7 +11,7 @@ const ROTATION_LERP = 0.1;
 const VERY_FAR_DISTANCE = 150; 
 const FAR_DISTANCE = 80;       
 
-export const RemotePlayer = ({ id, position, rotation, cameraEnabled }) => {
+export const RemotePlayer = ({ id, position, rotation, cameraEnabled, skin = 'sphere' }) => {
   const groupRef = useRef();
   const remoteStream = useGameStore(state => state.remoteStreams[id]);
   
@@ -20,6 +21,7 @@ export const RemotePlayer = ({ id, position, rotation, cameraEnabled }) => {
   
   const [shouldRender, setShouldRender] = useState(true);
   const [isLowQuality, setIsLowQuality] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
 
   // Mettre à jour les cibles quand les props changent
   if (Array.isArray(position)) {
@@ -56,57 +58,69 @@ export const RemotePlayer = ({ id, position, rotation, cameraEnabled }) => {
     if (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
     if (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
     groupRef.current.rotation.y += rotDiff * ROTATION_LERP;
+
+    // ========== 6. Detect movement ==========
+    const dist2 = groupRef.current.position.distanceTo(targetPosition.current);
+    setIsMoving(dist2 > 0.05);
   });
 
   if (!shouldRender) return null;
 
   return (
     <group ref={groupRef} position={position}>
-      {/* CORPS (Sphère Orange) */}
-      <mesh castShadow>
-        {isLowQuality ? (
-          <sphereGeometry args={[0.5, 16, 16]} />
-        ) : (
-          <sphereGeometry args={[0.5, 32, 32]} />
-        )}
-        <meshStandardMaterial
-          color="#f39c12"
-          emissive="#f39c12"
-          emissiveIntensity={1.5}
-          roughness={0.2}
-          metalness={0.8}
-        />
-      </mesh>
 
-      {/* ANNEAU AUTOUR (Orange) */}
-      {!isLowQuality && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.7, 0.05, 16, 100]} />
-          <meshStandardMaterial
-            color="#f39c12"
-            emissive="#f39c12"
-            emissiveIntensity={4}
-            metalness={1}
-            roughness={0}
-            transparent
-            opacity={1}
-          />
-        </mesh>
+      {/* === SPHERE SKIN === */}
+      {skin !== 'human' && (
+        <>
+          <mesh castShadow>
+            {isLowQuality ? (
+              <sphereGeometry args={[0.5, 16, 16]} />
+            ) : (
+              <sphereGeometry args={[0.5, 32, 32]} />
+            )}
+            <meshStandardMaterial
+              color="#f39c12"
+              emissive="#f39c12"
+              emissiveIntensity={1.5}
+              roughness={0.2}
+              metalness={0.8}
+            />
+          </mesh>
+
+          {!isLowQuality && (
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.7, 0.05, 16, 100]} />
+              <meshStandardMaterial
+                color="#f39c12"
+                emissive="#f39c12"
+                emissiveIntensity={4}
+                metalness={1}
+                roughness={0}
+                transparent
+                opacity={1}
+              />
+            </mesh>
+          )}
+
+          <mesh position={[0, 0, -0.6]} castShadow>
+            <boxGeometry args={[0.3, 0.3, 0.3]} />
+            <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={2} />
+          </mesh>
+        </>
       )}
 
-      {/* SAC À DOS (Blanc, comme vous) */}
-      <mesh position={[0, 0, -0.6]} castShadow>
-        <boxGeometry args={[0.3, 0.3, 0.3]} />
-        <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={2} />
-      </mesh>
+      {/* === HUMAN SPRITE SKIN === */}
+      {skin === 'human' && (
+        <SpriteCharacter isMoving={isMoving} skinVariant={0} />
+      )}
 
-      {/* DISQUE AU SOL (Vert, comme vous) */}
+      {/* DISQUE AU SOL */}
       {!isLowQuality && (
         <mesh position={[0, -0.6, 0]}>
           <cylinderGeometry args={[0.4, 0.4, 0.05, 16]} />
           <meshStandardMaterial
-            color="#00ff00"
-            emissive="#00ff00"
+            color={skin === 'human' ? '#f39c12' : '#00ff00'}
+            emissive={skin === 'human' ? '#f39c12' : '#00ff00'}
             emissiveIntensity={2}
             transparent
             opacity={1}

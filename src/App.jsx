@@ -189,7 +189,7 @@ function App() {
             {hasStarted && <Player />}
             {hasStarted && Object.values(players).map((p) =>
               p.id !== localPlayer?.id && (
-                <RemotePlayer key={p.id} id={p.id} position={p.position} rotation={p.rotation} cameraEnabled={p.cameraEnabled} />
+                <RemotePlayer key={p.id} id={p.id} position={p.position} rotation={p.rotation} cameraEnabled={p.cameraEnabled} skin={p.skin || 'sphere'} />
               )
             )}
           </Physics>

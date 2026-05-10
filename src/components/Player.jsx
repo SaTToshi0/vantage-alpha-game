@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useSphere } from '@react-three/cannon';
 import { useKeyboard } from '../hooks/useKeyboard';
@@ -6,6 +6,7 @@ import { Vector3, Euler } from 'three';
 import { emitMove } from './SocketManager';
 import { useGameStore } from '../store/useGameStore';
 import { FloatingVideo } from './FloatingVideo';
+import { SpriteCharacter } from './SpriteCharacter';
 
 // ========== PARAMÈTRES (Hardcodés pour stabilité temporaire) ==========
 const WALK_SPEED = 8;
@@ -138,6 +139,9 @@ export const Player = () => {
       emitMove(pos.current, [0, playerRotation.current.y, 0]);
       lastEmitTime.current = now;
     }
+    // 11. Detect movement for sprite animation
+    const spd = Math.abs(velocity.current[0]) + Math.abs(velocity.current[2]);
+    setIsMoving(spd > 0.5);
   });
 
   // ========== TOUCH LOOK (MOBILE) ==========
@@ -145,6 +149,8 @@ export const Player = () => {
   const isMobile = useGameStore(state => state.isMobile);
   const localStream = useGameStore(state => state.localStream);
   const cameraEnabled = useGameStore(state => state.localPlayer.cameraEnabled);
+  const skin = useGameStore(state => state.localPlayer?.skin);
+  const [isMoving, setIsMoving] = useState(false);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -181,49 +187,62 @@ export const Player = () => {
   return (
     <>
       <group ref={ref} rotation={[0, playerRotation.current.y, 0]}>
-        <mesh castShadow>
-          <sphereGeometry args={[0.5, 32, 32]} />
-          <meshStandardMaterial
-            color="#3498db"
-            emissive="#3498db"
-            emissiveIntensity={1.5}
-            roughness={0.2}
-            metalness={0.8}
-          />
-        </mesh>
 
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.7, 0.05, 16, 100]} />
-          <meshStandardMaterial
-            ref={ringMaterialRef}
-            color="#3498db"
-            emissive="#3498db"
-            emissiveIntensity={4}
-            metalness={1}
-            roughness={0}
-            transparent
-            opacity={1}
-          />
-        </mesh>
+        {/* === SPHERE SKIN === */}
+        {skin !== 'human' && (
+          <>
+            <mesh castShadow>
+              <sphereGeometry args={[0.5, 32, 32]} />
+              <meshStandardMaterial
+                color="#3498db"
+                emissive="#3498db"
+                emissiveIntensity={1.5}
+                roughness={0.2}
+                metalness={0.8}
+              />
+            </mesh>
 
-        <mesh position={[0, 0, -0.6]} castShadow>
-          <boxGeometry args={[0.3, 0.3, 0.3]} />
-          <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={2} />
-        </mesh>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.7, 0.05, 16, 100]} />
+              <meshStandardMaterial
+                ref={ringMaterialRef}
+                color="#3498db"
+                emissive="#3498db"
+                emissiveIntensity={4}
+                metalness={1}
+                roughness={0}
+                transparent
+                opacity={1}
+              />
+            </mesh>
 
+            <mesh position={[0, 0, -0.6]} castShadow>
+              <boxGeometry args={[0.3, 0.3, 0.3]} />
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={2} />
+            </mesh>
+          </>
+        )}
+
+        {/* === HUMAN SPRITE SKIN === */}
+        {skin === 'human' && (
+          <SpriteCharacter isMoving={isMoving} skinVariant={0} />
+        )}
+
+        {/* Shadow disk on ground - always visible */}
         {isGrounded.current && (
           <mesh position={[0, -0.6, 0]}>
             <cylinderGeometry args={[0.4, 0.4, 0.05, 16]} />
             <meshStandardMaterial
               ref={diskMaterialRef}
-              color="#00ff00"
-              emissive="#00ff00"
+              color={skin === 'human' ? '#3498db' : '#00ff00'}
+              emissive={skin === 'human' ? '#3498db' : '#00ff00'}
               emissiveIntensity={2}
               transparent
               opacity={1}
             />
           </mesh>
         )}
+
         {cameraEnabled && localStream && (
           <FloatingVideo stream={localStream} mirrored />
         )}

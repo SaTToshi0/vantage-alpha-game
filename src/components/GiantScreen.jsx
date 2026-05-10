@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import { Mic, MicOff } from 'lucide-react';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 
 export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation = [0, 0, 0], scale = 1, color = '#a8ff3e', mirrored = false, isLocal = true }) => {
@@ -88,49 +87,56 @@ export const GiantScreen = ({ stream, player, position = [0, 12, -15], rotation 
         <lineBasicMaterial color={color} />
       </lineSegments>
 
-      {/* --- HUD INFO BAR EN DESSOUS DE L'ÉCRAN --- */}
-      <Html
-        transform
-        distanceFactor={10}
-        position={[0, -5.2, 0]}
-        style={{
-          width: '1600px',
-          height: '120px',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 40px',
-          gap: '40px',
-          background: `rgba(0,0,0,0.85)`,
-          border: `2px solid ${color}`,
-          fontFamily: "'Press Start 2P', monospace",
-          color: color,
-          pointerEvents: 'none',
-          boxSizing: 'border-box',
-        }}
-      >
-        {/* Mic status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
-          {player.micEnabled
-            ? <Mic size={40} color={color} />
-            : <MicOff size={40} color='#ff00ff' />}
-          <span style={{ fontSize: '22px', color: player.micEnabled ? color : '#ff00ff' }}>
-            {player.micEnabled ? 'ON' : 'MUTED'}
-          </span>
-        </div>
+      {/* --- HUD INFO BAR 3D SOUS L'ÉCRAN --- */}
+      <group position={[0, -5.2, 0]}>
+        {/* Barre de support principale */}
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[16, 1.2, 0.4]} />
+          <meshStandardMaterial color="#111" metalness={0.8} roughness={0.2} />
+        </mesh>
 
-        {/* Ligne de séparation */}
-        <div style={{ width: '2px', height: '60px', background: `${color}55`, flexShrink: 0 }} />
+        {/* Bordure de la barre */}
+        <lineSegments position={[0, 0, 0.2]}>
+          <edgesGeometry args={[new THREE.BoxGeometry(16, 1.2, 0.4)]} />
+          <lineBasicMaterial color={color} />
+        </lineSegments>
 
-        {/* Nom du joueur */}
-        <div style={{ flex: 1, fontSize: '32px', letterSpacing: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {player.name ? player.name.toUpperCase() : (player.id?.slice(0, 8) || 'AGENT')}
-        </div>
+        {/* Statut Mic (Gauche) */}
+        <Text
+          position={[-7, 0, 0.22]}
+          fontSize={0.4}
+          color={player?.micEnabled ? color : '#ff00ff'}
+          anchorX="left"
+          anchorY="middle"
+          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
+        >
+          {player?.micEnabled ? 'MIC: ON' : 'MIC: MUTED'}
+        </Text>
 
-        {/* Indicateur cam */}
-        <div style={{ fontSize: '22px', color: player.cameraEnabled ? color : '#555', flexShrink: 0 }}>
-          {player.cameraEnabled ? '📷 CAM LIVE' : '📷 CAM OFF'}
-        </div>
-      </Html>
+        {/* Nom du Joueur (Centre) */}
+        <Text
+          position={[0, 0, 0.22]}
+          fontSize={0.5}
+          color={color}
+          anchorX="center"
+          anchorY="middle"
+          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
+        >
+          {player?.name ? player.name.toUpperCase() : (player?.id?.slice(0, 8) || 'AGENT')}
+        </Text>
+
+        {/* Statut Caméra (Droite) */}
+        <Text
+          position={[7, 0, 0.22]}
+          fontSize={0.4}
+          color={player?.cameraEnabled ? color : '#555'}
+          anchorX="right"
+          anchorY="middle"
+          font="https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff"
+        >
+          {player?.cameraEnabled ? 'CAM: LIVE' : 'CAM: OFF'}
+        </Text>
+      </group>
 
       {/* Lumière émise par l'écran */}
       <pointLight distance={18} intensity={2} color={color} position={[0, 0, 1]} />

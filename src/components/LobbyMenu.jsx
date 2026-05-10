@@ -330,8 +330,22 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
           {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>)}
         </select>
       </div>
-      <div style={{ height: '8px', background: '#000', border: `1px solid ${GREEN}44`, marginBottom: '24px', borderRadius: '2px', overflow: 'hidden' }}>
+      <div style={{ height: '8px', background: '#000', border: `1px solid ${GREEN}44`, marginBottom: '16px', borderRadius: '2px', overflow: 'hidden' }}>
         <div ref={micLevelRef} style={{ width: '0%', height: '100%', background: GREEN, transition: 'width 0.1s' }} />
+      </div>
+
+      {/* Choix du Skin */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', alignItems: 'center' }}>
+        <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: '#fff', width: '100px' }}>SKIN :</div>
+        <button 
+          onClick={() => setLocalPlayerStatus({ skin: localPlayer?.skin === 'sphere' ? 'human' : 'sphere' })}
+          style={{
+            flex: 1, padding: '10px', border: `2px solid #3498db`,
+            background: 'rgba(52, 152, 219, 0.15)', color: '#3498db',
+            cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
+          }}>
+          {localPlayer?.skin === 'human' ? '👦 HUMAIN 2D' : '🔵 SPHÈRE 3D'}
+        </button>
       </div>
 
       {/* Bouton d'entrée */}
@@ -654,6 +668,24 @@ const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
                 <audio ref={audioRef} autoPlay playsInline />
               </div>
             </div>
+          </div>
+
+          {/* Choix du Skin */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '12px', alignItems: 'center' }}>
+            <div style={{ fontFamily: FONT, fontSize: '0.35rem', color: '#fff', flexShrink: 0 }}>SKIN :</div>
+            <button
+              onClick={() => {
+                const newSkin = localPlayer?.skin === 'sphere' ? 'human' : 'sphere';
+                setLocalPlayerStatus({ skin: newSkin });
+                socket?.emit('update-status', { skin: newSkin });
+              }}
+              style={{
+                flex: 1, padding: '8px', border: `2px solid #3498db`,
+                background: 'rgba(52, 152, 219, 0.15)', color: '#3498db',
+                cursor: 'pointer', fontFamily: FONT, fontSize: '0.35rem'
+              }}>
+              {localPlayer?.skin === 'human' ? '👦 HUMAIN 2D' : '🔵 SPHÈRE 3D'}
+            </button>
           </div>
 
           <div style={{ marginTop: 'auto' }}>
