@@ -194,15 +194,21 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
   const animRef = useRef(null);
 
   // Enumération des périphériques
-  useEffect(() => {
+  const fetchDevices = () => {
     navigator.mediaDevices?.enumerateDevices().then(devices => {
       const audios = devices.filter(d => d.kind === 'audioinput');
       const videos = devices.filter(d => d.kind === 'videoinput');
       setAudioDevices(audios);
       setVideoDevices(videos);
-      if (audios.length > 0) setSelectedMic(audios[0].deviceId);
-      if (videos.length > 0) setSelectedCam(videos[0].deviceId);
+      
+      // Si on a les permissions (label non vide), on peut auto-sélectionner le premier
+      if (audios.length > 0 && audios[0].label) setSelectedMic(audios[0].deviceId);
+      if (videos.length > 0 && videos[0].label) setSelectedCam(videos[0].deviceId);
     }).catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchDevices();
   }, []);
 
   // Démarrer/stopper le flux selon les toggles
@@ -216,6 +222,10 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
       navigator.mediaDevices?.getUserMedia(constraints).then(stream => {
         streamRef.current = stream;
         setLocalStream(stream);
+        
+        // Rafraîchir les périphériques maintenant qu'on a la permission
+        fetchDevices();
+
         if (videoRef.current && localPlayer?.cameraEnabled) videoRef.current.srcObject = stream;
         if (localPlayer?.micEnabled) {
           audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -386,17 +396,21 @@ const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
   const animRef = useRef(null);
 
   // Enumeration des périphériques
-  useEffect(() => {
+  const fetchDevices = () => {
     if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
         const audios = devices.filter(d => d.kind === 'audioinput');
         const videos = devices.filter(d => d.kind === 'videoinput');
         setAudioDevices(audios);
         setVideoDevices(videos);
-        if (audios.length > 0) setSelectedMic(audios[0].deviceId);
-        if (videos.length > 0) setSelectedCam(videos[0].deviceId);
+        if (audios.length > 0 && audios[0].label) setSelectedMic(audios[0].deviceId);
+        if (videos.length > 0 && videos[0].label) setSelectedCam(videos[0].deviceId);
       }).catch(err => console.error("Enumerate devices error:", err));
     }
+  };
+
+  useEffect(() => {
+    fetchDevices();
   }, []);
 
   // Gestion du flux média pour le test
@@ -411,6 +425,8 @@ const WaitingRoomScreen = ({ socket, code, isHost, onStartGame, onBack }) => {
         .then(stream => {
           streamRef.current = stream;
           setLocalStream(stream);
+          fetchDevices(); // Rafraîchir avec les vrais noms
+
           if (videoRef.current && localPlayer?.cameraEnabled) {
             videoRef.current.srcObject = stream;
           }
