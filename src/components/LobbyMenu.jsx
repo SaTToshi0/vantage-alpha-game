@@ -185,6 +185,7 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedMic, setSelectedMic] = useState('');
   const [selectedCam, setSelectedCam] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -247,6 +248,13 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
         }
       }).catch(err => {
         console.error('Media error:', err);
+        if (err.name === 'NotReadableError') {
+          setErrorMsg("⚠️ Caméra/Micro déjà utilisé par une autre application !");
+        } else if (err.name === 'NotAllowedError') {
+          setErrorMsg("⚠️ Permission refusée pour la caméra/micro !");
+        } else {
+          setErrorMsg("⚠️ Impossible d'accéder à la caméra/micro.");
+        }
         setLocalPlayerStatus({ micEnabled: false, cameraEnabled: false });
       });
     } else {
@@ -283,6 +291,13 @@ const SoloSetupScreen = ({ socket, onEnter, onBack }) => {
             </div>
         }
       </div>
+
+      {/* Message d'erreur éventuel */}
+      {errorMsg && (
+        <div style={{ color: PINK, fontFamily: FONT, fontSize: '0.4rem', textAlign: 'center', marginBottom: '16px', lineHeight: '1.5' }}>
+          {errorMsg}
+        </div>
+      )}
 
       {/* Contrôles Cam */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' }}>

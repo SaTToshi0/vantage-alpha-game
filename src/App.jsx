@@ -31,7 +31,11 @@ function HUD({ roomCode }) {
     } else if (newVal) {
       navigator.mediaDevices?.getUserMedia({ audio: true, video: localPlayer?.cameraEnabled || false })
         .then(stream => setLocalStream(stream))
-        .catch(console.error);
+        .catch(err => {
+          console.error('Mic error:', err);
+          setLocalPlayerStatus({ micEnabled: false });
+          getSocket()?.emit('update-status', { micEnabled: false });
+        });
     }
   };
 
@@ -45,7 +49,11 @@ function HUD({ roomCode }) {
     } else if (newVal) {
       navigator.mediaDevices?.getUserMedia({ audio: localPlayer?.micEnabled || false, video: true })
         .then(stream => setLocalStream(stream))
-        .catch(console.error);
+        .catch(err => {
+          console.error('Camera error:', err);
+          setLocalPlayerStatus({ cameraEnabled: false });
+          getSocket()?.emit('update-status', { cameraEnabled: false });
+        });
     }
   };
 
