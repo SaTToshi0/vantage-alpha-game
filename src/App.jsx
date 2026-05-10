@@ -5,17 +5,67 @@ import { PointerLockControls } from '@react-three/drei';
 import { World } from './components/World';
 import { Player } from './components/Player';
 import { RemotePlayer } from './components/RemotePlayer';
-import { SocketManager, initializeSocket } from './components/SocketManager';
+import { SocketManager, initializeSocket, getSocket } from './components/SocketManager';
 import { MainMenu } from './components/MainMenu';
 import { LobbyMenu } from './components/LobbyMenu';
 import { MobileControls } from './components/MobileControls';
 import { useGameStore } from './store/useGameStore';
-import { Users, Wifi, Shield, Zap } from 'lucide-react';
+import { Users, Wifi, Shield, Zap, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 
 // ─── HUD en jeu ───
 function HUD({ roomCode }) {
   const { players, isMobile } = useGameStore();
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const setLocalPlayerStatus = useGameStore(state => state.setLocalPlayerStatus);
+  const localStream = useGameStore(state => state.localStream);
+  const setLocalStream = useGameStore(state => state.setLocalStream);
   const playerCount = Object.keys(players).length;
+  const streamRef = useRef ? undefined : undefined; // handled by SoloSetupScreen
+
+  const toggleMic = () => {
+    const newVal = !localPlayer?.micEnabled;
+    setLocalPlayerStatus({ micEnabled: newVal });
+    getSocket()?.emit('update-status', { micEnabled: newVal });
+
+    // Activer/désactiver l'audio dans le flux existant
+    if (localStream) {
+      localStream.getAudioTracks().forEach(t => { t.enabled = newVal; });
+    } else if (newVal) {
+      // Demander accès si pas de flux
+      navigator.mediaDevices?.getUserMedia({ audio: true, video: localPlayer?.cameraEnabled || false })
+        .then(stream => setLocalStream(stream))
+        .catch(console.error);
+    }
+  };
+
+  const toggleCamera = () => {
+    const newVal = !localPlayer?.cameraEnabled;
+    setLocalPlayerStatus({ cameraEnabled: newVal });
+    getSocket()?.emit('update-status', { cameraEnabled: newVal });
+
+    // Activer/désactiver la vidéo dans le flux existant
+    if (localStream) {
+      localStream.getVideoTracks().forEach(t => { t.enabled = newVal; });
+    } else if (newVal) {
+      navigator.mediaDevices?.getUserMedia({ audio: localPlayer?.micEnabled || false, video: true })
+        .then(stream => setLocalStream(stream))
+        .catch(console.error);
+    }
+  };
+
+  const btnStyle = (active, color) => ({
+    display: 'flex', alignItems: 'center', gap: '6px',
+    padding: '8px 14px',
+    background: active ? `${color}22` : 'rgba(0,0,0,0.6)',
+    border: `1.5px solid ${active ? color : '#333'}`,
+    color: active ? color : '#555',
+    cursor: 'pointer',
+    fontFamily: "'Press Start 2P', monospace",
+    fontSize: '0.35rem',
+    letterSpacing: '1px',
+    transition: 'all 0.15s',
+    backdropFilter: 'blur(4px)',
+  });
 
   return (
     <div className={`hud ${isMobile ? 'mobile' : ''}`}>
@@ -31,14 +81,27 @@ function HUD({ roomCode }) {
         <div className="glass-panel" style={{ padding: isMobile ? '8px 12px' : '10px 16px' }}>
           <div className="stat-item" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem' }}>
             <Shield size={isMobile ? 12 : 14} />
-            <span>
-              {roomCode ? roomCode : 'Solo'}
-            </span>
+            <span>{roomCode ? roomCode : 'Solo'}</span>
           </div>
         </div>
       </div>
 
       {!isMobile && <div className="crosshair" />}
+
+      {/* Contrôles Cam/Mic en bas à gauche */}
+      <div style={{
+        position: 'fixed', bottom: isMobile ? '200px' : '2rem', left: '2rem',
+        display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 100,
+      }}>
+        <button style={btnStyle(localPlayer?.cameraEnabled, '#ff6eb4')} onClick={toggleCamera}>
+          {localPlayer?.cameraEnabled ? <Video size={14} /> : <VideoOff size={14} />}
+          {localPlayer?.cameraEnabled ? 'CAM ON' : 'CAM OFF'}
+        </button>
+        <button style={btnStyle(localPlayer?.micEnabled, '#a8ff3e')} onClick={toggleMic}>
+          {localPlayer?.micEnabled ? <Mic size={14} /> : <MicOff size={14} />}
+          {localPlayer?.micEnabled ? 'MIC ON' : 'MIC OFF'}
+        </button>
+      </div>
 
       <div className="bottom-bar" style={{ bottom: isMobile ? '160px' : '2rem' }}>
         <div className="glass-panel" style={{ width: isMobile ? '200px' : '280px' }}>
