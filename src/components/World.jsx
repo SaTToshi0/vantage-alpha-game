@@ -43,9 +43,9 @@ const ScreenManager = () => {
   if (activeScreens.length === 0) return null;
 
   // Placement spécifique
-  const radius = 15;
-  const height = 20; // Bien surelevé
-  const screenScale = 0.55; // Plus petit et plus élégant
+  const radius = 12;
+  const height = 8;  // À hauteur des yeux du joueur
+  const screenScale = 2.0; // Très grand et imposant
 
   // Cas spécial : 2 écrans face à face
   if (activeScreens.length === 2) {
